@@ -3,18 +3,27 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3 } from 'lucide-react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import type { PlayerFormValues, CategoryFormValues } from './random-tournament/page';
+import type { PlayerFormValues, CategoryFormValues } from '../random-tournament/page'; // Ajusta la ruta si es necesario
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
+interface Dupla {
+  id: string;
+  jugadores: [PlayerFormValues, PlayerFormValues];
+  nombre: string; // Ej: "Jugador1 / Jugador2"
+}
 
 interface CategoriaConDuplas extends CategoryFormValues {
-  duplas: PlayerFormValues[][];
+  duplas: Dupla[];
   jugadoresSobrantes: PlayerFormValues[];
   numTotalJugadores: number;
 }
@@ -25,41 +34,271 @@ interface TorneoActivoData {
   time: string;
   place: string;
   categoriesWithDuplas: CategoriaConDuplas[];
+  numCourts?: number;
+  matchDuration?: number; // en minutos
 }
+
+// Estructuras para el fixture
+interface Standing {
+  duplaId: string;
+  duplaName: string;
+  pj: number; // Partidos Jugados
+  pg: number; // Partidos Ganados
+  pp: number; // Partidos Perdidos
+  pf: number; // Puntos a Favor (sets/games)
+  pc: number; // Puntos en Contra (sets/games)
+  pts: number; // Puntos Totales
+}
+
+interface Match {
+  id: string;
+  round?: number;
+  dupla1: Dupla;
+  dupla2: Dupla;
+  score1?: number;
+  score2?: number;
+  court?: number | string;
+  time?: string;
+  status: 'pending' | 'completed' | 'live';
+  winnerId?: string;
+}
+
+interface Group {
+  id: string;
+  name: string; // Ej: "Grupo A"
+  duplas: Dupla[];
+  standings: Standing[];
+  matches: Match[];
+}
+
+interface PlayoffMatch extends Match {
+  stage: 'semifinal' | 'final' | 'tercer_puesto';
+  description: string; // Ej: "Ganador G1 vs Segundo G2"
+}
+
+interface CategoryFixture {
+  categoryId: string;
+  categoryName: string;
+  groups: Group[];
+  playoffMatches?: PlayoffMatch[];
+}
+
+interface FixtureData {
+  [categoryId: string]: CategoryFixture;
+}
+
+
+const generateDuplaId = (d: [PlayerFormValues, PlayerFormValues]): string => {
+  // Simple ID based on sorted player RUTs or names if no RUT
+  const p1Identifier = d[0].rut || d[0].name;
+  const p2Identifier = d[1].rut || d[1].name;
+  return [p1Identifier, p2Identifier].sort().join('-');
+};
+
 
 export default function ActiveTournamentPage() {
   const [torneo, setTorneo] = useState<TorneoActivoData | null>(null);
+  const [fixture, setFixture] = useState<FixtureData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [numCourts, setNumCourts] = useState<number | undefined>(undefined);
+  const [matchDuration, setMatchDuration] = useState<number | undefined>(undefined); // en minutos
   const { toast } = useToast();
 
-  useEffect(() => {
+  const loadTournamentData = useCallback(() => {
     setIsLoading(true);
     try {
       const storedTorneo = sessionStorage.getItem('torneoActivo');
       if (storedTorneo) {
         const parsedTorneo = JSON.parse(storedTorneo) as TorneoActivoData;
         if (parsedTorneo && parsedTorneo.tournamentName && parsedTorneo.categoriesWithDuplas) {
-          setTorneo(parsedTorneo);
+          // Transformar duplas para incluir ID y nombre
+          const transformedCategories = parsedTorneo.categoriesWithDuplas.map(cat => ({
+            ...cat,
+            duplas: cat.duplas.map((duplaArray: any) => { // any para flexibilidad en datos de sessionStorage
+              const d = duplaArray as [PlayerFormValues, PlayerFormValues]; // Asegurar tipo
+              return {
+                id: generateDuplaId(d),
+                jugadores: d,
+                nombre: `${d[0].name} / ${d[1].name}`
+              };
+            })
+          }));
+          setTorneo({ ...parsedTorneo, categoriesWithDuplas: transformedCategories });
+          setNumCourts(parsedTorneo.numCourts || 2);
+          setMatchDuration(parsedTorneo.matchDuration || 60);
+
+          const storedFixture = sessionStorage.getItem(`fixture_${parsedTorneo.tournamentName}`);
+          if (storedFixture) {
+            setFixture(JSON.parse(storedFixture));
+          } else {
+            setFixture(null);
+          }
+
         } else {
-          console.warn("Invalid tournament data found in sessionStorage or data is incomplete.");
           setTorneo(null);
+          setFixture(null);
         }
       } else {
-        setTorneo(null); // No tournament data found
+        setTorneo(null);
+        setFixture(null);
       }
     } catch (error) {
       console.error("Error reading or parsing sessionStorage:", error);
-      setTorneo(null); 
+      setTorneo(null);
+      setFixture(null);
     }
     setIsLoading(false);
   }, []);
 
-  const handleGeneratePartidos = () => {
-    toast({
-      title: "Próximamente",
-      description: "La funcionalidad para generar partidos (fixture, rondas, etc.) estará disponible pronto.",
-    });
+  useEffect(() => {
+    loadTournamentData();
+  }, [loadTournamentData]);
+
+  const handleTournamentSettingChange = (type: 'courts' | 'duration', value: string) => {
+    if (!torneo) return;
+    const numericValue = parseInt(value, 10);
+    let updatedTorneo = { ...torneo };
+
+    if (type === 'courts') {
+      setNumCourts(numericValue);
+      updatedTorneo.numCourts = numericValue;
+    } else if (type === 'duration') {
+      setMatchDuration(numericValue);
+      updatedTorneo.matchDuration = numericValue;
+    }
+    
+    setTorneo(updatedTorneo);
+    sessionStorage.setItem('torneoActivo', JSON.stringify(updatedTorneo));
+    toast({ title: "Ajuste Guardado", description: `Se actualizó ${type === 'courts' ? 'el número de canchas' : 'la duración de partidos'}.` });
+     // Si se cambia un ajuste, el fixture anterior puede no ser válido, así que lo reseteamos.
+    setFixture(null);
+    if (torneo) {
+        sessionStorage.removeItem(`fixture_${torneo.tournamentName}`);
+    }
   };
+
+  const generateFixture = () => {
+    if (!torneo || !torneo.categoriesWithDuplas || !numCourts || !matchDuration) {
+      toast({ title: "Error", description: "Faltan datos del torneo, canchas o duración de partidos para generar el fixture.", variant: "destructive" });
+      return;
+    }
+
+    const newFixture: FixtureData = {};
+    let globalMatchCounter = 0; // Para horarios simples
+    const tournamentStartTime = torneo.time ? new Date(`1970-01-01T${torneo.time}`) : new Date(1970,0,1,9,0,0); // Default a 9 AM
+
+    torneo.categoriesWithDuplas.forEach(category => {
+      if (category.duplas.length < 2) { // Necesitamos al menos 2 duplas para hacer algo
+        newFixture[category.id] = {
+          categoryId: category.id,
+          categoryName: `${category.type} - ${category.level}`,
+          groups: [],
+          playoffMatches: []
+        };
+        return;
+      }
+
+      // 1. Generación de Grupos
+      const categoryDuplas = [...category.duplas]; // Copia para no mutar original
+      const groups: Group[] = [];
+      const numCategoryDuplas = categoryDuplas.length;
+      let groupLetter = 'A';
+
+      if (numCategoryDuplas < 3) { // Si menos de 3 duplas, todas en un solo grupo si es necesario
+         groups.push({
+            id: `${category.id}-G${groupLetter}`,
+            name: `Grupo ${groupLetter}`,
+            duplas: [...categoryDuplas],
+            standings: categoryDuplas.map(d => ({ duplaId: d.id, duplaName: d.nombre, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0, pts: 0 })),
+            matches: []
+         });
+      } else {
+        // Lógica para distribuir en grupos (ej. de 3 a 5)
+        let duplasToAssign = numCategoryDuplas;
+        const targetGroupSize = Math.min(5, Math.max(3, Math.ceil(numCategoryDuplas / Math.ceil(numCategoryDuplas/5)))); // Intenta grupos de 3-5
+        
+        while(duplasToAssign > 0) {
+            const currentGroupSize = Math.min(duplasToAssign, targetGroupSize);
+            if (duplasToAssign - currentGroupSize < 3 && duplasToAssign - currentGroupSize > 0) { // Evitar grupo restante muy pequeño
+                 // Ajustar tamaño de grupos previos o actual si es posible
+                 // Esta lógica puede ser compleja, por ahora una distribución simple
+                 const groupDuplas = categoryDuplas.splice(0, currentGroupSize);
+                 groups.push({
+                    id: `${category.id}-G${groupLetter}`,
+                    name: `Grupo ${groupLetter}`,
+                    duplas: groupDuplas,
+                    standings: groupDuplas.map(d => ({ duplaId: d.id, duplaName: d.nombre, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0, pts: 0 })),
+                    matches: []
+                 });
+
+            } else {
+                 const groupDuplas = categoryDuplas.splice(0, currentGroupSize);
+                 groups.push({
+                    id: `${category.id}-G${groupLetter}`,
+                    name: `Grupo ${groupLetter}`,
+                    duplas: groupDuplas,
+                    standings: groupDuplas.map(d => ({ duplaId: d.id, duplaName: d.nombre, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0, pts: 0 })),
+                    matches: []
+                 });
+            }
+            duplasToAssign -= currentGroupSize;
+            groupLetter = String.fromCharCode(groupLetter.charCodeAt(0) + 1);
+        }
+      }
+
+
+      // 2. Generación de Partidos (Round Robin por grupo) y asignación simple de horario/cancha
+      let categoryMatchCounter = 0;
+      groups.forEach(group => {
+        const groupDuplas = group.duplas;
+        for (let i = 0; i < groupDuplas.length; i++) {
+          for (let j = i + 1; j < groupDuplas.length; j++) {
+            const matchStartTime = new Date(tournamentStartTime.getTime() + (globalMatchCounter * matchDuration * 60000));
+            const assignedCourt = (categoryMatchCounter % numCourts) + 1;
+            
+            group.matches.push({
+              id: `${group.id}-M${group.matches.length + 1}`,
+              dupla1: groupDuplas[i],
+              dupla2: groupDuplas[j],
+              status: 'pending',
+              court: `Cancha ${assignedCourt}`,
+              time: format(matchStartTime, "HH:mm")
+            });
+            categoryMatchCounter++;
+            if (categoryMatchCounter % numCourts === 0) { // Avanza el slot de tiempo global si todas las canchas se usaron
+                globalMatchCounter++;
+            }
+          }
+        }
+      });
+      if (categoryMatchCounter % numCourts !== 0) { // Si quedaron partidos en el último slot, avanzar el contador global
+          globalMatchCounter++;
+      }
+
+
+      // 3. Generación de Playoffs (simplificado para 2 grupos)
+      let playoffMatches: PlayoffMatch[] | undefined = undefined;
+      if (groups.length === 2) {
+        playoffMatches = [
+          { id: `${category.id}-SF1`, dupla1: {id: 'placeholder-G1W', nombre: 'Ganador Grupo A', jugadores:[] as any}, dupla2: {id:'placeholder-G2RU', nombre:'Segundo Grupo B', jugadores:[] as any}, status: 'pending', stage: 'semifinal', description: 'Ganador Grupo A vs Segundo Grupo B' },
+          { id: `${category.id}-SF2`, dupla1: {id:'placeholder-G2W', nombre:'Ganador Grupo B', jugadores:[] as any}, dupla2: {id:'placeholder-G1RU', nombre:'Segundo Grupo A', jugadores:[] as any}, status: 'pending', stage: 'semifinal', description: 'Ganador Grupo B vs Segundo Grupo A' },
+          { id: `${category.id}-F`, dupla1: {id:'placeholder-SF1W', nombre:'Ganador SF1', jugadores:[] as any}, dupla2: {id:'placeholder-SF2W', nombre:'Ganador SF2', jugadores:[] as any}, status: 'pending', stage: 'final', description: 'Final' },
+        ];
+      }
+
+      newFixture[category.id] = {
+        categoryId: category.id,
+        categoryName: `${category.type} - ${category.level}`,
+        groups,
+        playoffMatches
+      };
+    });
+
+    setFixture(newFixture);
+    sessionStorage.setItem(`fixture_${torneo.tournamentName}`, JSON.stringify(newFixture));
+    toast({ title: "Fixture Generado", description: "Se ha creado la planilla de grupos y partidos." });
+  };
+
 
   if (isLoading) {
     return (
@@ -100,7 +339,7 @@ export default function ActiveTournamentPage() {
           {torneo.tournamentName}
         </h1>
       </div>
-      <Card className="w-full max-w-3xl mb-8 shadow-lg">
+      <Card className="w-full max-w-4xl mb-8 shadow-lg">
         <CardHeader>
           <CardTitle className="text-2xl">Detalles del Torneo</CardTitle>
         </CardHeader>
@@ -117,22 +356,56 @@ export default function ActiveTournamentPage() {
             <MapPinIcon className="mr-2 h-5 w-5 text-primary" />
             <p><strong>Lugar:</strong> {torneo.place || "No especificado"}</p>
           </div>
-          <div className="flex items-center col-span-1 sm:col-span-2">
+          <div className="flex items-center">
             <Users className="mr-2 h-5 w-5 text-primary" />
-            <p><strong>Categorías en Torneo:</strong> {torneo.categoriesWithDuplas.length}</p>
+            <p><strong>Categorías:</strong> {torneo.categoriesWithDuplas.length}</p>
+          </div>
+          
+          <div className="space-y-1">
+            <Label htmlFor="numCourts" className="flex items-center"><Settings className="mr-2 h-4 w-4 text-muted-foreground" />Nº de Canchas</Label>
+            <Select 
+                value={numCourts?.toString()} 
+                onValueChange={(value) => handleTournamentSettingChange('courts', value)}
+            >
+              <SelectTrigger id="numCourts">
+                <SelectValue placeholder="Selecciona canchas" />
+              </SelectTrigger>
+              <SelectContent>
+                {Array.from({ length: 9 }, (_, i) => i + 2).map(n => (
+                  <SelectItem key={n} value={n.toString()}>{n} canchas</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="matchDuration" className="flex items-center"><Clock className="mr-2 h-4 w-4 text-muted-foreground" />Duración Partidos</Label>
+            <Select
+                value={matchDuration?.toString()}
+                onValueChange={(value) => handleTournamentSettingChange('duration', value)}
+            >
+              <SelectTrigger id="matchDuration">
+                <SelectValue placeholder="Selecciona duración" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="30">30 minutos</SelectItem>
+                <SelectItem value="45">45 minutos</SelectItem>
+                <SelectItem value="60">60 minutos</SelectItem>
+                <SelectItem value="90">90 minutos</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
         <CardFooter className="flex justify-end pt-4">
-            <Button onClick={handleGeneratePartidos}>
+            <Button onClick={generateFixture} disabled={!numCourts || !matchDuration}>
                 <ListChecks className="mr-2 h-5 w-5" />
                 Generar Partidos
             </Button>
         </CardFooter>
       </Card>
 
-      <h2 className="text-2xl md:text-3xl font-bold text-primary mb-6 self-start w-full max-w-3xl mx-auto">Categorías y Duplas</h2>
+      <h2 className="text-2xl md:text-3xl font-bold text-primary mb-6 self-start w-full max-w-4xl mx-auto">Categorías y Duplas Originales</h2>
       {torneo.categoriesWithDuplas.length > 0 ? (
-        <Accordion type="single" collapsible className="w-full max-w-3xl" defaultValue={torneo.categoriesWithDuplas.find(c => c.numTotalJugadores > 0)?.id}>
+        <Accordion type="single" collapsible className="w-full max-w-4xl mb-8" defaultValue={torneo.categoriesWithDuplas.find(c => c.numTotalJugadores > 0)?.id}>
           {torneo.categoriesWithDuplas.map((categoria) => (
             <AccordionItem value={categoria.id} key={categoria.id} className="border-b">
               <AccordionTrigger className="text-lg md:text-xl font-semibold hover:no-underline py-4">
@@ -149,27 +422,27 @@ export default function ActiveTournamentPage() {
                 ): categoria.duplas.length > 0 ? (
                   <ul className="space-y-4">
                     {categoria.duplas.map((dupla, index) => (
-                      <li key={index} className="p-3 md:p-4 border rounded-lg shadow-sm bg-background">
+                      <li key={dupla.id || index} className="p-3 md:p-4 border rounded-lg shadow-sm bg-background">
                         <div className="flex items-center justify-between mb-2">
                             <h4 className="font-semibold text-primary flex items-center text-md md:text-lg">
-                                <Swords className="mr-2 h-5 w-5" /> Dupla {index + 1}
+                                <Swords className="mr-2 h-5 w-5" /> Dupla {index + 1}: {dupla.nombre}
                             </h4>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-sm">
                           <div>
-                            <span className="font-medium">Jugador 1:</span> {dupla[0].name} 
-                            <span className="text-muted-foreground text-xs capitalize"> ({dupla[0].position})</span>
+                            <span className="font-medium">Jugador 1:</span> {dupla.jugadores[0].name} 
+                            <span className="text-muted-foreground text-xs capitalize"> ({dupla.jugadores[0].position})</span>
                           </div>
                           <div>
-                            <span className="font-medium">Jugador 2:</span> {dupla[1].name}
-                            <span className="text-muted-foreground text-xs capitalize"> ({dupla[1].position})</span>
+                            <span className="font-medium">Jugador 2:</span> {dupla.jugadores[1].name}
+                            <span className="text-muted-foreground text-xs capitalize"> ({dupla.jugadores[1].position})</span>
                           </div>
                         </div>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-muted-foreground text-center py-3">No se pudieron formar duplas para esta categoría (jugadores insuficientes o combinaciones no válidas según las reglas).</p>
+                  <p className="text-muted-foreground text-center py-3">No se pudieron formar duplas para esta categoría.</p>
                 )}
                 {categoria.jugadoresSobrantes.length > 0 && (
                   <div className="mt-6 pt-4 border-t">
@@ -183,10 +456,6 @@ export default function ActiveTournamentPage() {
                     </ul>
                   </div>
                 )}
-                {/* Mensaje específico si hay jugadores pero no se formaron duplas ni hay sobrantes (lógica extra) */}
-                {categoria.numTotalJugadores > 0 && categoria.duplas.length === 0 && categoria.jugadoresSobrantes.length < categoria.numTotalJugadores && categoria.jugadoresSobrantes.length === 0 && (
-                     <p className="text-muted-foreground text-center py-3 mt-2">Hay {categoria.numTotalJugadores} jugador(es) inscrito(s), pero no se pudieron formar duplas con las reglas actuales.</p>
-                )}
               </AccordionContent>
             </AccordionItem>
           ))}
@@ -194,8 +463,108 @@ export default function ActiveTournamentPage() {
       ) : (
         <p className="text-muted-foreground text-center py-6 text-lg">No hay categorías definidas para este torneo.</p>
       )}
+
+      {fixture && Object.keys(fixture).length > 0 && (
+        <Card className="w-full max-w-4xl mb-8 shadow-lg">
+            <CardHeader>
+                <CardTitle className="text-2xl flex items-center"><TrophyIcon className="mr-2 h-6 w-6 text-primary" /> Planilla del Torneo</CardTitle>
+                <CardDescription>Grupos, partidos y playoffs generados.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                 <Tabs defaultValue={Object.keys(fixture)[0]} className="w-full">
+                    <TabsList className="grid w-full grid-cols-min-1fr md:grid-cols-none md:flex md:flex-wrap justify-start mb-4">
+                        {Object.values(fixture).map((catFixture) => (
+                            <TabsTrigger key={catFixture.categoryId} value={catFixture.categoryId} className="capitalize truncate text-xs sm:text-sm px-2 sm:px-3">
+                                {catFixture.categoryName}
+                            </TabsTrigger>
+                        ))}
+                    </TabsList>
+                    {Object.values(fixture).map((catFixture) => (
+                        <TabsContent key={catFixture.categoryId} value={catFixture.categoryId}>
+                            <Tabs defaultValue="grupos" className="w-full">
+                                <TabsList className="grid w-full grid-cols-3 mb-2">
+                                    <TabsTrigger value="grupos">Grupos</TabsTrigger>
+                                    <TabsTrigger value="partidos">Partidos</TabsTrigger>
+                                    <TabsTrigger value="playoffs">Playoffs</TabsTrigger>
+                                </TabsList>
+                                <TabsContent value="grupos">
+                                    {catFixture.groups.length > 0 ? catFixture.groups.map(group => (
+                                        <div key={group.id} className="mb-6">
+                                            <h4 className="text-lg font-semibold text-primary mb-2">{group.name}</h4>
+                                            <Table>
+                                                <TableHeader>
+                                                    <TableRow>
+                                                        <TableHead className="w-[40px]">#</TableHead>
+                                                        <TableHead>Dupla</TableHead>
+                                                        <TableHead className="text-center">PJ</TableHead>
+                                                        <TableHead className="text-center">PG</TableHead>
+                                                        <TableHead className="text-center">PP</TableHead>
+                                                        <TableHead className="text-center">PF</TableHead>
+                                                        <TableHead className="text-center">PC</TableHead>
+                                                        <TableHead className="text-center">Pts</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {group.standings.map((s, idx) => (
+                                                        <TableRow key={s.duplaId}>
+                                                            <TableCell>{idx + 1}</TableCell>
+                                                            <TableCell>{s.duplaName}</TableCell>
+                                                            <TableCell className="text-center">{s.pj}</TableCell>
+                                                            <TableCell className="text-center">{s.pg}</TableCell>
+                                                            <TableCell className="text-center">{s.pp}</TableCell>
+                                                            <TableCell className="text-center">{s.pf}</TableCell>
+                                                            <TableCell className="text-center">{s.pc}</TableCell>
+                                                            <TableCell className="text-center font-bold">{s.pts}</TableCell>
+                                                        </TableRow>
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
+                                        </div>
+                                    )) : <p className="text-muted-foreground text-center py-3">No hay grupos generados para esta categoría.</p>}
+                                </TabsContent>
+                                <TabsContent value="partidos">
+                                    {catFixture.groups.some(g => g.matches.length > 0) ? catFixture.groups.map(group => group.matches.length > 0 && (
+                                        <div key={`${group.id}-matches`} className="mb-6">
+                                            <h4 className="text-lg font-semibold text-primary mb-2">Partidos {group.name}</h4>
+                                            <ul className="space-y-2">
+                                                {group.matches.map(match => (
+                                                    <li key={match.id} className="p-3 border rounded-md bg-secondary/20 text-sm">
+                                                        <span>{match.dupla1.nombre}</span> <span className="font-bold mx-1">vs</span> <span>{match.dupla2.nombre}</span>
+                                                        <span className="text-xs text-muted-foreground ml-2">({match.court || 'Cancha TBD'}, {match.time || 'Hora TBD'})</span>
+                                                        <Button variant="outline" size="sm" className="ml-3 text-xs h-6" onClick={() => toast({title:"Próximamente", description:"Registrar resultado del partido."})}><Edit3 className="mr-1 h-3 w-3"/>Resultado</Button>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )) : <p className="text-muted-foreground text-center py-3">No hay partidos generados para esta categoría.</p>}
+                                </TabsContent>
+                                <TabsContent value="playoffs">
+                                    {catFixture.playoffMatches && catFixture.playoffMatches.length > 0 ? (
+                                        <div className="mb-6">
+                                            <h4 className="text-lg font-semibold text-primary mb-2">Fase de Playoffs</h4>
+                                            <ul className="space-y-2">
+                                                {catFixture.playoffMatches.map(match => (
+                                                    <li key={match.id} className="p-3 border rounded-md bg-secondary/20 text-sm">
+                                                        <strong>{match.stage === 'semifinal' ? 'Semifinal' : match.stage === 'final' ? 'Final' : 'Tercer Puesto'}:</strong> {match.description}
+                                                        <span className="text-xs text-muted-foreground ml-2">({match.court || 'Cancha TBD'}, {match.time || 'Hora TBD'})</span>
+                                                         <Button variant="outline" size="sm" className="ml-3 text-xs h-6" onClick={() => toast({title:"Próximamente", description:"Registrar resultado del partido."})}><Edit3 className="mr-1 h-3 w-3"/>Resultado</Button>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    ) : (
+                                        <p className="text-muted-foreground text-center py-3">La fase de playoffs no aplica o no ha sido generada para esta categoría (requiere 2 grupos para la estructura actual).</p>
+                                    )}
+                                </TabsContent>
+                            </Tabs>
+                        </TabsContent>
+                    ))}
+                 </Tabs>
+            </CardContent>
+        </Card>
+      )}
       
-      <div className="flex flex-col sm:flex-row gap-4 mt-10 w-full max-w-3xl justify-center">
+      <div className="flex flex-col sm:flex-row gap-4 mt-10 w-full max-w-4xl justify-center">
         <Link href="/random-tournament" passHref>
           <Button variant="outline" size="lg" className="text-base w-full sm:w-auto">Crear Nuevo Torneo Random</Button>
         </Link>
@@ -207,3 +576,4 @@ export default function ActiveTournamentPage() {
   );
 }
 
+    
