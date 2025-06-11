@@ -3,13 +3,14 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon } from 'lucide-react';
+import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import type { PlayerFormValues, CategoryFormValues } from './random-tournament/page';
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { useToast } from "@/hooks/use-toast";
 
 
 interface CategoriaConDuplas extends CategoryFormValues {
@@ -29,6 +30,7 @@ interface TorneoActivoData {
 export default function ActiveTournamentPage() {
   const [torneo, setTorneo] = useState<TorneoActivoData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     setIsLoading(true);
@@ -52,6 +54,13 @@ export default function ActiveTournamentPage() {
     setIsLoading(false);
   }, []);
 
+  const handleGeneratePartidos = () => {
+    toast({
+      title: "Próximamente",
+      description: "La funcionalidad para generar partidos (fixture, rondas, etc.) estará disponible pronto.",
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="container mx-auto flex flex-col items-center justify-center flex-1 py-12 px-4 md:px-6 text-center">
@@ -74,7 +83,7 @@ export default function ActiveTournamentPage() {
               <Button variant="default" size="lg">Crear un Torneo Random</Button>
             </Link>
             <Link href="/" passHref>
-              <Button variant="outline" size="lg">Volver al Inicio</Button>
+              <Button variant="outline" size="lg"><Home className="mr-2 h-5 w-5" />Volver al Inicio</Button>
             </Link>
         </div>
       </div>
@@ -113,6 +122,12 @@ export default function ActiveTournamentPage() {
             <p><strong>Categorías en Torneo:</strong> {torneo.categoriesWithDuplas.length}</p>
           </div>
         </CardContent>
+        <CardFooter className="flex justify-end pt-4">
+            <Button onClick={handleGeneratePartidos}>
+                <ListChecks className="mr-2 h-5 w-5" />
+                Generar Partidos
+            </Button>
+        </CardFooter>
       </Card>
 
       <h2 className="text-2xl md:text-3xl font-bold text-primary mb-6 self-start w-full max-w-3xl mx-auto">Categorías y Duplas</h2>
@@ -180,9 +195,15 @@ export default function ActiveTournamentPage() {
         <p className="text-muted-foreground text-center py-6 text-lg">No hay categorías definidas para este torneo.</p>
       )}
       
-      <Link href="/random-tournament" passHref className="mt-10">
-        <Button variant="outline" size="lg" className="text-base">Crear Nuevo Torneo Random</Button>
-      </Link>
+      <div className="flex flex-col sm:flex-row gap-4 mt-10 w-full max-w-3xl justify-center">
+        <Link href="/random-tournament" passHref>
+          <Button variant="outline" size="lg" className="text-base w-full sm:w-auto">Crear Nuevo Torneo Random</Button>
+        </Link>
+        <Link href="/" passHref>
+          <Button variant="default" size="lg" className="text-base w-full sm:w-auto"><Home className="mr-2 h-5 w-5" />Volver al Inicio</Button>
+        </Link>
+      </div>
     </div>
   );
 }
+
