@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { CalendarIcon, Shuffle, Trash2, UserPlus, Users, Trophy, MapPin, Clock, FileText, XCircle, Layers, PlusCircle, Tag, TestTube2 } from "lucide-react";
 
@@ -67,7 +68,7 @@ const tournamentFormSchema = z.object({
   time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: "Formato de hora inválido (HH:MM)." }),
   place: z.string().min(3, { message: "El lugar debe tener al menos 3 caracteres." }),
   categories: z.array(categorySchema).min(1, { message: "Debe haber al menos una categoría en el torneo." }),
-  players: z.array(playerSchema), 
+  players: z.array(playerSchema),
 });
 
 type TournamentFormValues = z.infer<typeof tournamentFormSchema>;
@@ -116,8 +117,9 @@ export default function RandomTournamentPage() {
       categoryId: "",
     },
   });
-  
+
   const watchedCategories = form.watch("categories");
+  const watchedPlayers = form.watch("players");
 
   function onSubmitTournament(data: TournamentFormValues) {
     console.log("Tournament Data:", data);
@@ -159,14 +161,18 @@ export default function RandomTournamentPage() {
       description: `${playerData.name} ha sido añadido al torneo.`,
     });
   }
-  
+
   const getCategoryName = (categoryId: string) => {
     const category = watchedCategories.find(c => c.id === categoryId);
     return category ? `${category.type} - ${category.level}` : "Categoría desconocida";
   };
+  
+  const getCategoryShortName = (category: CategoryFormValues) => {
+    return `${category.type.substring(0,3)}. ${category.level}`;
+  }
 
   const fillWithTestData = () => {
-    form.reset({ // Resetea el formulario a estos valores
+    form.reset({
       tournamentName: "Torneo de Prueba Rápida",
       date: new Date(),
       time: "10:00",
@@ -174,22 +180,22 @@ export default function RandomTournamentPage() {
       categories: [],
       players: [],
     });
-    replaceCategories([]); // Limpia categorías existentes
-    replacePlayers([]); // Limpia jugadores existentes
+    replaceCategories([]);
+    replacePlayers([]);
 
     const testCategories: CategoryFormValues[] = [
       { id: crypto.randomUUID(), type: "varones", level: "3° Categoría" },
       { id: crypto.randomUUID(), type: "damas", level: "Categoría B" },
     ];
-    
+
     testCategories.forEach(cat => appendCategory(cat));
-    
+
     const newPlayers: PlayerFormValues[] = [];
     const positions: PlayerFormValues["position"][] = ["drive", "reves", "ambos"];
 
     for (let i = 0; i < 40; i++) {
-      const categoryIndex = i < 20 ? 0 : 1; // 20 jugadores para la primera categoría, 20 para la segunda
-      const rutBase = 10000000 + i * 1000 + Math.floor(Math.random() * 1000); // Genera un número base más único
+      const categoryIndex = i < 20 ? 0 : 1;
+      const rutBase = 10000000 + i * 1000 + Math.floor(Math.random() * 1000);
       const dv = Math.random() > 0.5 ? Math.floor(Math.random() * 10).toString() : "K";
       newPlayers.push({
         id: crypto.randomUUID(),
@@ -216,7 +222,7 @@ export default function RandomTournamentPage() {
           Crear Torneo Random
         </h1>
       </div>
-      
+
       <div className="w-full max-w-3xl mb-4">
         <Button type="button" onClick={fillWithTestData} variant="outline" className="w-full md:w-auto">
           <TestTube2 className="mr-2 h-4 w-4" /> Llenar con Datos de Prueba
@@ -276,7 +282,7 @@ export default function RandomTournamentPage() {
                             selected={field.value}
                             onSelect={field.onChange}
                             disabled={(date) =>
-                              date < new Date(new Date().setHours(0,0,0,0)) 
+                              date < new Date(new Date().setHours(0,0,0,0))
                             }
                             initialFocus
                             locale={es}
@@ -331,12 +337,12 @@ export default function RandomTournamentPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Tipo de Categoría</FormLabel>
-                        <Select 
+                        <Select
                           onValueChange={(value) => {
                             field.onChange(value);
                             setSelectedCategoryTypeForNew(value as CategoryType | "");
-                            categoryForm.setValue("level", ""); 
-                          }} 
+                            categoryForm.setValue("level", "");
+                          }}
                           value={field.value}
                         >
                           <FormControl>
@@ -385,7 +391,7 @@ export default function RandomTournamentPage() {
               </Form>
 
               <Separator className="my-6" />
-              
+
               {categoryFields.length > 0 && (
                 <div>
                   <h3 className="text-lg font-medium mb-4">Categorías del Torneo:</h3>
@@ -404,10 +410,28 @@ export default function RandomTournamentPage() {
                               variant: "destructive"
                             });
                           }
-                          // Considera preguntar confirmación antes de remover jugadores o la categoría.
-                          // Por ahora, simplemente se remueve la categoría.
-                          // Podrías querer actualizar los categoryId de los jugadores a "" o un valor por defecto.
                           removeCategory(index);
+                          // Actualizar jugadores que estaban en la categoría eliminada
+                          const updatedPlayers = playerFields
+                            .filter(p => p.categoryId !== category.id)
+                            .map(p => ({...p})); // shallow copy to avoid issues with field array
+                          
+                          // Opcional: Mover jugadores a una categoría "Sin asignar" o similar, o simplemente eliminarlos de la lista si se elimina la categoría
+                          // Por ahora, los jugadores cuya categoría se eliminó no se modificarán explícitamente aquí,
+                          // pero ya no tendrán una categoría válida en el selector o al listar.
+                          // Podrías setear su categoryId a "" o un valor especial.
+                          
+                          // Si decides reasignar, aquí iría la lógica para actualizar el categoryId de los jugadores afectados.
+                          // Ejemplo:
+                          // const playersToUpdate = playerFields.filter(p => p.categoryId === category.id);
+                          // playersToUpdate.forEach(player => {
+                          //   const playerIndex = playerFields.findIndex(p => p.id === player.id);
+                          //   if (playerIndex !== -1) {
+                          //     // updatePlayer(playerIndex, { ...player, categoryId: "" }); // Asumiendo que tienes una función updatePlayer
+                          //     // O bien, manejar esto al momento de listar o procesar los jugadores.
+                          //   }
+                          // });
+
                           toast({ title: "Categoría Eliminada", description: `Categoría ${category.type} - ${category.level} eliminada.`});
                         }}>
                           <Trash2 className="h-5 w-5 text-destructive" />
@@ -524,34 +548,57 @@ export default function RandomTournamentPage() {
 
               <Separator className="my-6" />
               
-              {playerFields.length > 0 && (
+              {watchedPlayers.length > 0 && watchedCategories.length > 0 ? (
                 <div>
                   <h3 className="text-lg font-medium mb-4">Jugadores Inscritos:</h3>
-                  <ul className="space-y-3">
-                    {playerFields.map((player, index) => (
-                      <li key={player.id} className="flex items-center justify-between p-3 bg-secondary/30 rounded-md shadow-sm">
-                        <div>
-                          <p className="font-semibold">{player.name}</p>
-                          <p className="text-sm text-muted-foreground">RUT: {player.rut} - Posición: <span className="capitalize">{player.position}</span></p>
-                           <p className="text-sm text-muted-foreground">Categoría: {getCategoryName(player.categoryId)}</p>
-                        </div>
-                        <Button variant="ghost" size="icon" onClick={() => {
-                          removePlayer(index);
-                          toast({ title: "Jugador Eliminado", description: `${player.name} ha sido eliminado.`});
-                        }}>
-                          <Trash2 className="h-5 w-5 text-destructive" />
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
+                  <Tabs defaultValue={watchedCategories[0]?.id || "no-category"} className="w-full">
+                    <TabsList className="grid w-full grid-cols-min-1fr md:grid-cols-none md:flex md:flex-wrap">
+                      {watchedCategories.map((category) => (
+                        <TabsTrigger key={category.id} value={category.id} className="capitalize truncate">
+                          {getCategoryShortName(category)}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                    {watchedCategories.map((category) => {
+                      const playersInCategory = watchedPlayers.filter(p => p.categoryId === category.id);
+                      return (
+                        <TabsContent key={category.id} value={category.id}>
+                          {playersInCategory.length > 0 ? (
+                            <ul className="space-y-3 mt-4">
+                              {playersInCategory.map((player, index) => (
+                                <li key={player.id || index} className="flex items-center justify-between p-3 bg-secondary/30 rounded-md shadow-sm">
+                                  <div>
+                                    <p className="font-semibold">{player.name}</p>
+                                    <p className="text-sm text-muted-foreground">RUT: {player.rut} - Posición: <span className="capitalize">{player.position}</span></p>
+                                  </div>
+                                  <Button variant="ghost" size="icon" onClick={() => {
+                                    const playerGlobalIndex = watchedPlayers.findIndex(p => p.id === player.id);
+                                    if (playerGlobalIndex !== -1) {
+                                      removePlayer(playerGlobalIndex);
+                                      toast({ title: "Jugador Eliminado", description: `${player.name} ha sido eliminado de la categoría ${getCategoryName(player.categoryId)}.`});
+                                    }
+                                  }}>
+                                    <Trash2 className="h-5 w-5 text-destructive" />
+                                  </Button>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-muted-foreground text-center py-4 mt-4">
+                              No hay jugadores inscritos en la categoría {getCategoryName(category.id)}.
+                            </p>
+                          )}
+                        </TabsContent>
+                      );
+                    })}
+                  </Tabs>
                 </div>
-              )}
-              {playerFields.length === 0 && watchedCategories.length > 0 && (
-                <p className="text-muted-foreground text-center py-4">Aún no hay jugadores inscritos.</p>
+              ) : watchedCategories.length > 0 && (
+                 <p className="text-muted-foreground text-center py-4">Aún no hay jugadores inscritos en el torneo.</p>
               )}
             </CardContent>
           </Card>
-          
+
           <div className="flex flex-col sm:flex-row justify-end gap-4 mt-8">
             <Link href="/" passHref>
               <Button variant="outline" type="button" className="w-full sm:w-auto">
@@ -567,8 +614,6 @@ export default function RandomTournamentPage() {
     </div>
   );
 }
-    
-
     
 
     
