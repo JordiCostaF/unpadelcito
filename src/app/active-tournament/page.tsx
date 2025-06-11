@@ -89,8 +89,21 @@ interface FixtureData {
 
 
 const generateDuplaId = (d: [PlayerFormValues, PlayerFormValues]): string => {
-  const p1Identifier = d[0].rut || d[0].name;
-  const p2Identifier = d[1].rut || d[1].name;
+  // Defensive checks already added in the calling map, but good to have fallbacks if called directly elsewhere.
+  const p1 = d?.[0];
+  const p2 = d?.[1];
+
+  if (!p1 || !p2) {
+    console.error("Invalid dupla structure passed to generateDuplaId:", d);
+    return `error-dupla-id-${Math.random().toString(36).substring(2, 9)}`;
+  }
+  const p1Identifier = p1.rut || p1.name;
+  const p2Identifier = p2.rut || p2.name;
+
+  if (!p1Identifier || !p2Identifier) {
+    console.error("Player in dupla missing identifier (rut or name):", d);
+    return `error-player-id-${Math.random().toString(36).substring(2, 9)}`;
+  }
   return [p1Identifier, p2Identifier].sort().join('-');
 };
 
@@ -108,19 +121,49 @@ export default function ActiveTournamentPage() {
     try {
       const storedTorneo = sessionStorage.getItem('torneoActivo');
       if (storedTorneo) {
-        const parsedTorneo = JSON.parse(storedTorneo) as TorneoActivoData;
+        const parsedTorneo = JSON.parse(storedTorneo); // Parsed as StoredTorneoData implicitly
+        
         if (parsedTorneo && parsedTorneo.tournamentName && parsedTorneo.categoriesWithDuplas) {
-          const transformedCategories = parsedTorneo.categoriesWithDuplas.map(cat => ({
-            ...cat,
-            duplas: cat.duplas.map((duplaArray: any) => { 
-              const d = duplaArray as [PlayerFormValues, PlayerFormValues]; 
+          const transformedCategories = parsedTorneo.categoriesWithDuplas.map((cat: any) => {
+            const duplasTransformadas = (cat.duplas || []).map((duplaItem: unknown) => {
+              // Validate duplaItem structure
+              if (
+                !Array.isArray(duplaItem) ||
+                duplaItem.length !== 2
+              ) {
+                console.warn('Skipping malformed duplaItem (not an array or not length 2):', duplaItem);
+                return null;
+              }
+
+              const p1 = duplaItem[0] as PlayerFormValues | undefined;
+              const p2 = duplaItem[1] as PlayerFormValues | undefined;
+
+              if (
+                !p1 || !p2 || // Players must exist
+                !(p1.rut || p1.name) || // p1 must have (rut OR name)
+                !(p2.rut || p2.name) || // p2 must have (rut OR name)
+                !p1.name ||             // p1 must have name (for 'nombre' field)
+                !p2.name                // p2 must have name (for 'nombre' field)
+              ) {
+                console.warn('Skipping duplaItem with invalid player data (missing player, or missing rut/name for ID, or missing name for display):', duplaItem);
+                return null;
+              }
+              
+              const validDuplaPlayers = [p1, p2] as [PlayerFormValues, PlayerFormValues];
+
               return {
-                id: generateDuplaId(d),
-                jugadores: d,
-                nombre: `${d[0].name} / ${d[1].name}`
+                id: generateDuplaId(validDuplaPlayers),
+                jugadores: validDuplaPlayers,
+                nombre: `${p1.name} / ${p2.name}`
               };
-            })
-          }));
+            }).filter(Boolean); // Filter out any nulls from malformed items
+
+            return {
+              ...cat,
+              duplas: duplasTransformadas as Dupla[],
+            };
+          });
+          
           setTorneo({ ...parsedTorneo, categoriesWithDuplas: transformedCategories });
           setNumCourts(parsedTorneo.numCourts || 2);
           setMatchDuration(parsedTorneo.matchDuration || 60);
@@ -142,11 +185,12 @@ export default function ActiveTournamentPage() {
       }
     } catch (error) {
       console.error("Error reading or parsing sessionStorage:", error);
+      toast({ title: "Error de Carga", description: "No se pudieron cargar los datos del torneo. Intenta generar uno nuevo.", variant: "destructive" });
       setTorneo(null);
       setFixture(null);
     }
     setIsLoading(false);
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     loadTournamentData();
@@ -215,13 +259,7 @@ export default function ActiveTournamentPage() {
         while(duplasToAssign > 0) {
             let currentGroupSize = Math.min(duplasToAssign, idealGroupSize);
             if (duplasToAssign - currentGroupSize > 0 && duplasToAssign - currentGroupSize < 3) {
-                 // Si el grupo restante es demasiado pequeño, ajustar.
-                 // Por ejemplo, si quedan 7 y target es 5, crea grupos de 4 y 3 en lugar de 5 y 2.
-                 // O si quedan 2, y ya hay grupos, intenta redistribuir o hacer el grupo actual más grande.
-                 // Simplificación: tomar grupos de tamaño mínimo 3.
                  if (groups.length > 0 && duplasToAssign < idealGroupSize && duplasToAssign < 3) {
-                    // Añadir a último grupo si es posible, o crear uno más pequeño
-                    // Esta parte puede ser compleja, por ahora distribuimos como podemos
                     const groupDuplas = categoryDuplas.splice(0, duplasToAssign);
                      groups.push({
                         id: `${category.id}-G${groupLetter}`,
@@ -230,9 +268,9 @@ export default function ActiveTournamentPage() {
                         standings: groupDuplas.map(d => ({ duplaId: d.id, duplaName: d.nombre, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0, pts: 0 })),
                         matches: []
                      });
-                     duplasToAssign = 0; // Forzar salida
+                     duplasToAssign = 0; 
                  } else {
-                    currentGroupSize = Math.max(3, currentGroupSize); // Asegurar grupo de al menos 3 si es posible
+                    currentGroupSize = Math.max(3, currentGroupSize); 
                     const groupDuplas = categoryDuplas.splice(0, Math.min(duplasToAssign, currentGroupSize));
                     groups.push({
                         id: `${category.id}-G${groupLetter}`,
@@ -256,16 +294,13 @@ export default function ActiveTournamentPage() {
                  duplasToAssign -= groupDuplas.length;
             }
             groupLetter = String.fromCharCode(groupLetter.charCodeAt(0) + 1);
-            if (categoryDuplas.length === 0) duplasToAssign = 0; // Salir si ya no hay duplas
+            if (categoryDuplas.length === 0) duplasToAssign = 0; 
         }
       }
 
-      // 2. Generación de Partidos (Round Robin por grupo) y asignación de horarios/canchas
-      groups.forEach(g => g.matches = []); // Limpiar partidos existentes de los grupos
+      groups.forEach(g => g.matches = []); 
 
       if (groups.length > 0 && groups.length === numCourts) {
-        // CASO ESPECIAL: numGroups === numCourts
-        // Cada grupo juega en su propia cancha, ronda por ronda.
         const matchesByGroup: { [groupId: string]: Match[] } = {};
         groups.forEach(g => matchesByGroup[g.id] = []);
 
@@ -296,18 +331,17 @@ export default function ActiveTournamentPage() {
             groups.forEach((group, groupIndex) => {
                 if (matchesByGroup[group.id][roundNum]) {
                     const matchToAssign = matchesByGroup[group.id][roundNum];
-                    matchToAssign.court = `Cancha ${groupIndex + 1}`; // Grupo 0 en Cancha 1, etc.
+                    matchToAssign.court = `Cancha ${groupIndex + 1}`; 
                     matchToAssign.time = format(currentRoundStartTime, "HH:mm");
                     group.matches.push(matchToAssign);
                     roundHasActivity = true;
                 }
             });
             if (roundHasActivity) {
-                globalMatchCounter++; // Avanza el slot de tiempo global para la siguiente ronda o la siguiente categoría
+                globalMatchCounter++; 
             }
         }
       } else if (groups.length > 0) {
-        // CASO GENERAL: numGroups !== numCourts (o numGroups === 0, pero ya cubierto)
         const allCategoryRawMatches: (Match & { groupOriginId: string })[] = [];
         let tempMatchIdCounter = 0;
         groups.forEach(group => {
@@ -349,17 +383,14 @@ export default function ActiveTournamentPage() {
         }
       }
 
-      // 3. Generación de Playoffs (simplificado para 2 grupos)
       let playoffMatches: PlayoffMatch[] | undefined = undefined;
       if (groups.length === 2) {
-        const playoffStartTimeOffset = globalMatchCounter; // Los playoffs comienzan después de todos los partidos de grupo globales.
+        const playoffStartTimeOffset = globalMatchCounter; 
         playoffMatches = [
           { id: `${category.id}-SF1`, dupla1: {id: 'placeholder-G1W', nombre: 'Ganador Grupo A', jugadores:[] as any}, dupla2: {id:'placeholder-G2RU', nombre:'Segundo Grupo B', jugadores:[] as any}, status: 'pending', stage: 'semifinal', description: 'Ganador Grupo A vs Segundo Grupo B', court: `Cancha 1`, time: format(new Date(tournamentStartTime.getTime() + (playoffStartTimeOffset * matchDuration * 60000)), "HH:mm")},
           { id: `${category.id}-SF2`, dupla1: {id:'placeholder-G2W', nombre:'Ganador Grupo B', jugadores:[] as any}, dupla2: {id:'placeholder-G1RU', nombre:'Segundo Grupo A', jugadores:[] as any}, status: 'pending', stage: 'semifinal', description: 'Ganador Grupo B vs Segundo Grupo A', court: `Cancha 2`, time: format(new Date(tournamentStartTime.getTime() + (playoffStartTimeOffset * matchDuration * 60000)), "HH:mm") },
-          { id: `${category.id}-F`, dupla1: {id:'placeholder-SF1W', nombre:'Ganador SF1', jugadores:[] as any}, dupla2: {id:'placeholder-SF2W', nombre:'Ganador SF2', jugadores:[] as any}, status: 'pending', stage: 'final', description: 'Final', court: `Cancha 1`, time: format(new Date(tournamentStartTime.getTime() + ((playoffStartTimeOffset + 1) * matchDuration * 60000)), "HH:mm") }, // Asumiendo que las semis son en paralelo
+          { id: `${category.id}-F`, dupla1: {id:'placeholder-SF1W', nombre:'Ganador SF1', jugadores:[] as any}, dupla2: {id:'placeholder-SF2W', nombre:'Ganador SF2', jugadores:[] as any}, status: 'pending', stage: 'final', description: 'Final', court: `Cancha 1`, time: format(new Date(tournamentStartTime.getTime() + ((playoffStartTimeOffset + 1) * matchDuration * 60000)), "HH:mm") },
         ];
-         // globalMatchCounter debería avanzar después de los playoffs si otros elementos siguen.
-         // Por simplicidad, asumimos que los playoffs son lo último para esta categoría en términos de tiempo global.
       }
 
       newFixture[category.id] = {
@@ -670,3 +701,4 @@ export default function ActiveTournamentPage() {
   );
 }
     
+
