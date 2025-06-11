@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3 } from 'lucide-react';
+import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2 } from 'lucide-react';
 import React, { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -15,6 +15,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface Dupla {
   id: string;
@@ -60,7 +71,7 @@ interface Match {
   time?: string;
   status: 'pending' | 'completed' | 'live';
   winnerId?: string;
-  groupOriginId?: string; // Para ayudar a reasignar partidos al grupo correcto
+  groupOriginId?: string; 
 }
 
 interface Group {
@@ -89,7 +100,6 @@ interface FixtureData {
 
 
 const generateDuplaId = (d: [PlayerFormValues, PlayerFormValues]): string => {
-  // Defensive checks already added in the calling map, but good to have fallbacks if called directly elsewhere.
   const p1 = d?.[0];
   const p2 = d?.[1];
 
@@ -114,6 +124,7 @@ export default function ActiveTournamentPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [numCourts, setNumCourts] = useState<number | undefined>(undefined);
   const [matchDuration, setMatchDuration] = useState<number | undefined>(undefined);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const { toast } = useToast();
 
   const loadTournamentData = useCallback(() => {
@@ -121,12 +132,11 @@ export default function ActiveTournamentPage() {
     try {
       const storedTorneo = sessionStorage.getItem('torneoActivo');
       if (storedTorneo) {
-        const parsedTorneo = JSON.parse(storedTorneo); // Parsed as StoredTorneoData implicitly
+        const parsedTorneo = JSON.parse(storedTorneo); 
         
         if (parsedTorneo && parsedTorneo.tournamentName && parsedTorneo.categoriesWithDuplas) {
           const transformedCategories = parsedTorneo.categoriesWithDuplas.map((cat: any) => {
             const duplasTransformadas = (cat.duplas || []).map((duplaItem: unknown) => {
-              // Validate duplaItem structure
               if (
                 !Array.isArray(duplaItem) ||
                 duplaItem.length !== 2
@@ -139,11 +149,11 @@ export default function ActiveTournamentPage() {
               const p2 = duplaItem[1] as PlayerFormValues | undefined;
 
               if (
-                !p1 || !p2 || // Players must exist
-                !(p1.rut || p1.name) || // p1 must have (rut OR name)
-                !(p2.rut || p2.name) || // p2 must have (rut OR name)
-                !p1.name ||             // p1 must have name (for 'nombre' field)
-                !p2.name                // p2 must have name (for 'nombre' field)
+                !p1 || !p2 || 
+                !(p1.rut || p1.name) || 
+                !(p2.rut || p2.name) || 
+                !p1.name ||             
+                !p2.name                
               ) {
                 console.warn('Skipping duplaItem with invalid player data (missing player, or missing rut/name for ID, or missing name for display):', duplaItem);
                 return null;
@@ -156,7 +166,7 @@ export default function ActiveTournamentPage() {
                 jugadores: validDuplaPlayers,
                 nombre: `${p1.name} / ${p2.name}`
               };
-            }).filter(Boolean); // Filter out any nulls from malformed items
+            }).filter(Boolean); 
 
             return {
               ...cat,
@@ -406,6 +416,16 @@ export default function ActiveTournamentPage() {
     toast({ title: "Fixture Generado", description: "Se ha creado la planilla de grupos y partidos." });
   };
 
+  const handleDeleteTournamentConfirm = () => {
+    if (torneo) {
+      sessionStorage.removeItem(`fixture_${torneo.tournamentName}`);
+      sessionStorage.removeItem('torneoActivo');
+      loadTournamentData(); // This will set torneo and fixture to null
+      toast({ title: "Torneo Borrado", description: "El torneo activo ha sido eliminado." });
+    }
+    setIsDeleteDialogOpen(false);
+  };
+
 
   if (isLoading) {
     return (
@@ -440,6 +460,24 @@ export default function ActiveTournamentPage() {
 
   return (
     <div className="container mx-auto flex flex-col items-center flex-1 py-12 px-4 md:px-6">
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Estás seguro de borrar el torneo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. Se eliminarán todos los datos del torneo activo, incluyendo
+              las duplas y el fixture generado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteTournamentConfirm} className="bg-destructive hover:bg-destructive/90">
+              Confirmar Borrado
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="flex items-center mb-8 text-center">
         <Activity className="h-10 w-10 md:h-12 md:w-12 text-primary mr-2 md:mr-3" />
         <h1 className="text-3xl md:text-5xl font-bold font-headline text-primary break-words">
@@ -504,7 +542,11 @@ export default function ActiveTournamentPage() {
             </Select>
           </div>
         </CardContent>
-        <CardFooter className="flex justify-end pt-4">
+        <CardFooter className="flex justify-between items-center pt-4">
+            <Button variant="destructive" onClick={() => setIsDeleteDialogOpen(true)} >
+                <Trash2 className="mr-2 h-5 w-5" />
+                Borrar Torneo
+            </Button>
             <Button onClick={generateFixture} disabled={!numCourts || !matchDuration || !!fixture}>
                 <ListChecks className="mr-2 h-5 w-5" />
                 {fixture ? "Partidos Ya Generados" : "Generar Partidos"}
