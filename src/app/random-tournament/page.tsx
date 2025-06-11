@@ -40,7 +40,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  CalendarIcon, Shuffle, Trash2, UserPlus, Users, Trophy, MapPin, Clock, FileText, XCircle, Layers, PlusCircle, Tag, TestTube2, Pencil
+  CalendarIcon, Shuffle, Trash2, UserPlus, Users, Trophy, MapPin, Clock, FileText, XCircle, Layers, PlusCircle, Tag, TestTube2, Pencil, ListChecks
 } from "lucide-react";
 import {
   Dialog,
@@ -104,6 +104,25 @@ export default function RandomTournamentPage() {
   const [selectedCategoryTypeForNew, setSelectedCategoryTypeForNew] = useState<CategoryType | "">("");
   const [editingPlayer, setEditingPlayer] = useState<PlayerFormValues & { originalIndex: number } | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [activeTournamentExists, setActiveTournamentExists] = useState(false);
+
+  useEffect(() => {
+    const storedTorneo = sessionStorage.getItem('torneoActivo');
+    if (storedTorneo) {
+      try {
+        const parsedTorneo = JSON.parse(storedTorneo);
+        if (parsedTorneo && parsedTorneo.tournamentName && parsedTorneo.categoriesWithDuplas) {
+          setActiveTournamentExists(true);
+        } else {
+          setActiveTournamentExists(false);
+        }
+      } catch (error) {
+        setActiveTournamentExists(false);
+      }
+    } else {
+      setActiveTournamentExists(false);
+    }
+  }, []); // Se ejecuta solo al montar para verificar el estado inicial
 
   const form = useForm<TournamentFormValues>({
     resolver: zodResolver(tournamentFormSchema),
@@ -258,6 +277,7 @@ export default function RandomTournamentPage() {
   
     try {
       sessionStorage.setItem('torneoActivo', JSON.stringify(torneoActivo));
+      setActiveTournamentExists(true); // Actualizar el estado para mostrar el botón
       toast({
         title: "Torneo Registrado y Duplas Generadas",
         description: "Serás redirigido a la página del torneo activo.",
@@ -781,6 +801,14 @@ export default function RandomTournamentPage() {
                 <XCircle className="mr-2 h-4 w-4" /> Cancelar y Volver
               </Button>
             </Link>
+            {activeTournamentExists && (
+              <Link href="/active-tournament" passHref>
+                <Button variant="secondary" type="button" className="w-full sm:w-auto">
+                  <ListChecks className="mr-2 h-4 w-4" />
+                  Generar Partidos
+                </Button>
+              </Link>
+            )}
             <Button type="submit" className="w-full sm:w-auto">
               <Shuffle className="mr-2 h-4 w-4" /> Registrar Torneo y Generar Duplas
             </Button>
@@ -890,4 +918,6 @@ export default function RandomTournamentPage() {
     </div>
   );
 }
+    
+
     
