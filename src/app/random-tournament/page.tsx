@@ -37,7 +37,7 @@ import {
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { CalendarIcon, Shuffle, Trash2, UserPlus, Users, Trophy, MapPin, Clock, FileText, XCircle, Layers, PlusCircle, Tag } from "lucide-react";
+import { CalendarIcon, Shuffle, Trash2, UserPlus, Users, Trophy, MapPin, Clock, FileText, XCircle, Layers, PlusCircle, Tag, TestTube2 } from "lucide-react";
 
 const categoryOptions = {
   varones: ["1° Categoría", "2° Categoría", "3° Categoría", "4° Categoría", "5° Categoría", "6° Categoría"],
@@ -67,7 +67,7 @@ const tournamentFormSchema = z.object({
   time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: "Formato de hora inválido (HH:MM)." }),
   place: z.string().min(3, { message: "El lugar debe tener al menos 3 caracteres." }),
   categories: z.array(categorySchema).min(1, { message: "Debe haber al menos una categoría en el torneo." }),
-  players: z.array(playerSchema), // No es obligatorio tener jugadores al crear el torneo inicialmente
+  players: z.array(playerSchema), 
 });
 
 type TournamentFormValues = z.infer<typeof tournamentFormSchema>;
@@ -89,12 +89,12 @@ export default function RandomTournamentPage() {
     },
   });
 
-  const { fields: categoryFields, append: appendCategory, remove: removeCategory } = useFieldArray({
+  const { fields: categoryFields, append: appendCategory, remove: removeCategory, replace: replaceCategories } = useFieldArray({
     control: form.control,
     name: "categories",
   });
 
-  const { fields: playerFields, append: appendPlayer, remove: removePlayer } = useFieldArray({
+  const { fields: playerFields, append: appendPlayer, remove: removePlayer, replace: replacePlayers } = useFieldArray({
     control: form.control,
     name: "players",
   });
@@ -165,6 +165,49 @@ export default function RandomTournamentPage() {
     return category ? `${category.type} - ${category.level}` : "Categoría desconocida";
   };
 
+  const fillWithTestData = () => {
+    form.reset({ // Resetea el formulario a estos valores
+      tournamentName: "Torneo de Prueba Rápida",
+      date: new Date(),
+      time: "10:00",
+      place: "Club de Pádel Central",
+      categories: [],
+      players: [],
+    });
+    replaceCategories([]); // Limpia categorías existentes
+    replacePlayers([]); // Limpia jugadores existentes
+
+    const testCategories: CategoryFormValues[] = [
+      { id: crypto.randomUUID(), type: "varones", level: "3° Categoría" },
+      { id: crypto.randomUUID(), type: "damas", level: "Categoría B" },
+    ];
+    
+    testCategories.forEach(cat => appendCategory(cat));
+    
+    const newPlayers: PlayerFormValues[] = [];
+    const positions: PlayerFormValues["position"][] = ["drive", "reves", "ambos"];
+
+    for (let i = 0; i < 40; i++) {
+      const categoryIndex = i < 20 ? 0 : 1; // 20 jugadores para la primera categoría, 20 para la segunda
+      const rutBase = 10000000 + i * 1000 + Math.floor(Math.random() * 1000); // Genera un número base más único
+      const dv = Math.random() > 0.5 ? Math.floor(Math.random() * 10).toString() : "K";
+      newPlayers.push({
+        id: crypto.randomUUID(),
+        name: `Jugador ${i + 1}`,
+        rut: `${rutBase}-${dv}`,
+        position: positions[i % 3],
+        categoryId: testCategories[categoryIndex].id,
+      });
+    }
+    newPlayers.forEach(player => appendPlayer(player));
+
+    toast({
+      title: "Datos de Prueba Cargados",
+      description: "El formulario ha sido llenado con 2 categorías y 40 jugadores.",
+    });
+  };
+
+
   return (
     <div className="container mx-auto flex flex-col items-center flex-1 py-8 px-4 md:px-6">
       <div className="flex items-center mb-8">
@@ -172,6 +215,12 @@ export default function RandomTournamentPage() {
         <h1 className="text-4xl md:text-5xl font-bold font-headline text-primary">
           Crear Torneo Random
         </h1>
+      </div>
+      
+      <div className="w-full max-w-3xl mb-4">
+        <Button type="button" onClick={fillWithTestData} variant="outline" className="w-full md:w-auto">
+          <TestTube2 className="mr-2 h-4 w-4" /> Llenar con Datos de Prueba
+        </Button>
       </div>
 
       <Form {...form}>
@@ -286,7 +335,7 @@ export default function RandomTournamentPage() {
                           onValueChange={(value) => {
                             field.onChange(value);
                             setSelectedCategoryTypeForNew(value as CategoryType | "");
-                            categoryForm.setValue("level", ""); // Reset level when type changes
+                            categoryForm.setValue("level", ""); 
                           }} 
                           value={field.value}
                         >
@@ -347,16 +396,17 @@ export default function RandomTournamentPage() {
                           <p className="font-semibold capitalize">{category.type} - {category.level}</p>
                         </div>
                         <Button variant="ghost" size="icon" onClick={() => {
-                          // También deberíamos remover jugadores de esta categoría o advertir.
-                          // Por simplicidad, solo la removemos. Una mejora sería preguntar confirmación.
                           const playersInCategory = playerFields.filter(p => p.categoryId === category.id);
                           if (playersInCategory.length > 0) {
                             toast({
                               title: "Advertencia",
-                              description: `La categoría ${category.type} - ${category.level} tiene jugadores inscritos. Si la eliminas, estos jugadores quedarán sin categoría. Considera reasignarlos.`,
+                              description: `La categoría ${category.type} - ${category.level} tiene ${playersInCategory.length} jugador(es) inscrito(s). Si la eliminas, estos jugadores quedarán sin categoría.`,
                               variant: "destructive"
                             });
                           }
+                          // Considera preguntar confirmación antes de remover jugadores o la categoría.
+                          // Por ahora, simplemente se remueve la categoría.
+                          // Podrías querer actualizar los categoryId de los jugadores a "" o un valor por defecto.
                           removeCategory(index);
                           toast({ title: "Categoría Eliminada", description: `Categoría ${category.type} - ${category.level} eliminada.`});
                         }}>
@@ -517,6 +567,8 @@ export default function RandomTournamentPage() {
     </div>
   );
 }
+    
+
     
 
     
