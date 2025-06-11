@@ -8,6 +8,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import Link from "next/link";
 import React, { useState, useEffect } from "react";
+import { useRouter } from 'next/navigation';
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -83,12 +84,23 @@ const tournamentFormSchema = z.object({
   players: z.array(playerSchema),
 });
 
-type TournamentFormValues = z.infer<typeof tournamentFormSchema>;
-type PlayerFormValues = z.infer<typeof playerSchema>;
-type CategoryFormValues = z.infer<typeof categorySchema>;
+export type TournamentFormValues = z.infer<typeof tournamentFormSchema>;
+export type PlayerFormValues = z.infer<typeof playerSchema>;
+export type CategoryFormValues = z.infer<typeof categorySchema>;
+
+// Helper function to shuffle an array
+function shuffleArray<T>(array: T[]): T[] {
+  const newArray = [...array];
+  for (let i = newArray.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+  }
+  return newArray;
+}
 
 export default function RandomTournamentPage() {
   const { toast } = useToast();
+  const router = useRouter();
   const [selectedCategoryTypeForNew, setSelectedCategoryTypeForNew] = useState<CategoryType | "">("");
   const [editingPlayer, setEditingPlayer] = useState<PlayerFormValues & { originalIndex: number } | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -152,16 +164,115 @@ export default function RandomTournamentPage() {
   }, [editingPlayer, editPlayerForm]);
 
   function onSubmitTournament(data: TournamentFormValues) {
-    console.log("Tournament Data:", data);
-    toast({
-      title: "Torneo Registrado (simulado)",
-      description: (
-        <pre className="mt-2 w-[340px] rounded-md bg-slate-950 p-4">
-          <code className="text-white">{JSON.stringify(data, null, 2)}</code>
-        </pre>
-      ),
+    const { tournamentName, date, time, place, categories, players } = data;
+
+    if (categories.length === 0) {
+      toast({
+        title: "Error de Validación",
+        description: "Debes tener al menos una categoría para generar partidos.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    let totalPlayersNeeded = 0;
+    categories.forEach(cat => {
+        const playersInCategory = players.filter(p => p.categoryId === cat.id);
+        if (playersInCategory.length < 2) {
+            totalPlayersNeeded++;
+        }
     });
+
+    if (totalPlayersNeeded > 0 && categories.some(cat => players.filter(p => p.categoryId === cat.id).length <2)) {
+         toast({
+          title: "Error de Validación",
+          description: "Cada categoría debe tener al menos dos jugadores inscritos para generar duplas.",
+          variant: "destructive",
+        });
+        return;
+    }
+    if (players.length < 2) {
+        toast({
+         title: "Error de Validación",
+         description: "Debes tener al menos dos jugadores inscritos en total en el torneo.",
+         variant: "destructive",
+       });
+       return;
+   }
+
+
+    const torneoActivo = {
+      tournamentName,
+      date: date.toISOString(),
+      time,
+      place,
+      categoriesWithDuplas: categories.map(category => {
+        const playersInCategory = players.filter(p => p.categoryId === category.id);
+        
+        let drives = shuffleArray(playersInCategory.filter(p => p.position === 'drive'));
+        let reveses = shuffleArray(playersInCategory.filter(p => p.position === 'reves'));
+        let ambidiestros = shuffleArray(playersInCategory.filter(p => p.position === 'ambos'));
+  
+        const duplas: PlayerFormValues[][] = [];
+        
+        // Prioridad 1: Revés + Drive
+        while (reveses.length > 0 && drives.length > 0) {
+          duplas.push([reveses.pop()!, drives.pop()!]);
+        }
+        
+        // Prioridad 2: Revés + Ambos (Ambos juega Drive)
+        while (reveses.length > 0 && ambidiestros.length > 0) {
+          duplas.push([reveses.pop()!, ambidiestros.pop()!]);
+        }
+        
+        // Prioridad 3: Drive + Ambos (Ambos juega Revés)
+        while (drives.length > 0 && ambidiestros.length > 0) {
+          duplas.push([drives.pop()!, ambidiestros.pop()!]);
+        }
+        
+        // Prioridad 4: Ambos + Ambos
+        while (ambidiestros.length >= 2) {
+          duplas.push([ambidiestros.pop()!, ambidiestros.pop()!]);
+        }
+        
+        // Prioridad 5: Reves + Reves
+        while (reveses.length >= 2) {
+          duplas.push([reveses.pop()!, reveses.pop()!]);
+        }
+        
+        // Prioridad 6: Drive + Drive
+        while (drives.length >= 2) {
+          duplas.push([drives.pop()!, drives.pop()!]);
+        }
+        
+        const jugadoresSobrantes = [...drives, ...reveses, ...ambidiestros];
+        
+        return {
+          ...category,
+          duplas,
+          jugadoresSobrantes,
+          numTotalJugadores: playersInCategory.length
+        };
+      }),
+    };
+  
+    try {
+      sessionStorage.setItem('torneoActivo', JSON.stringify(torneoActivo));
+      toast({
+        title: "Torneo Registrado y Duplas Generadas",
+        description: "Serás redirigido a la página del torneo activo.",
+      });
+      router.push('/active-tournament');
+    } catch (error) {
+      console.error("Error saving to sessionStorage:", error);
+      toast({
+        title: "Error al Guardar",
+        description: "No se pudo guardar el torneo en la sesión del navegador. Intenta de nuevo.",
+        variant: "destructive",
+      });
+    }
   }
+
 
   function handleAddCategory(categoryData: Omit<CategoryFormValues, 'id'>) {
     const categoryExists = categoryFields.some(c => c.type === categoryData.type && c.level === categoryData.level);
@@ -205,7 +316,6 @@ export default function RandomTournamentPage() {
   function handleUpdatePlayer(data: PlayerFormValues) {
     if (!editingPlayer) return;
 
-    // Verificar si el RUT ha cambiado y si ya existe en la misma categoría (excluyendo al propio jugador)
     const rutChanged = data.rut !== editingPlayer.rut;
     const categoryChanged = data.categoryId !== editingPlayer.categoryId;
 
@@ -239,7 +349,7 @@ export default function RandomTournamentPage() {
   
   const getCategoryShortName = (category: CategoryFormValues) => {
     const type = category.type === "varones" ? "Var" : category.type === "damas" ? "Dam" : "Mix";
-    const levelShort = category.level.split(" ")[0];
+    const levelShort = category.level.split(" ")[0]; // Toma la primera parte del nivel (ej. "1°" de "1° Categoría")
     return `${type}. ${levelShort}`;
   }
 
@@ -486,6 +596,10 @@ export default function RandomTournamentPage() {
                             });
                           }
                           removeCategory(index);
+                          // Opcional: remover jugadores de la categoría eliminada
+                          // const updatedPlayers = playerFields.filter(p => p.categoryId !== category.id);
+                          // replacePlayers(updatedPlayers);
+
                           toast({ title: "Categoría Eliminada", description: `Categoría ${category.type} - ${category.level} eliminada.`});
                         }}>
                           <Trash2 className="h-5 w-5 text-destructive" />
@@ -668,7 +782,7 @@ export default function RandomTournamentPage() {
               </Button>
             </Link>
             <Button type="submit" className="w-full sm:w-auto">
-              <Shuffle className="mr-2 h-4 w-4" /> Registrar Torneo y Generar Partidos
+              <Shuffle className="mr-2 h-4 w-4" /> Registrar Torneo y Generar Duplas
             </Button>
           </div>
         </form>
