@@ -2,11 +2,12 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useFieldArray, useForm } from "react-hook-form";
+import { useFieldArray, useForm, Controller } from "react-hook-form";
 import * as z from "zod";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import Link from "next/link";
+import React, { useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -36,14 +37,28 @@ import {
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { CalendarIcon, Shuffle, Trash2, UserPlus, Users, Trophy, MapPin, Clock, FileText, XCircle } from "lucide-react";
+import { CalendarIcon, Shuffle, Trash2, UserPlus, Users, Trophy, MapPin, Clock, FileText, XCircle, Layers, PlusCircle, Tag } from "lucide-react";
+
+const categoryOptions = {
+  varones: ["1° Categoría", "2° Categoría", "3° Categoría", "4° Categoría", "5° Categoría", "6° Categoría"],
+  damas: ["Categoría A", "Categoría B", "Categoría C", "Categoría D", "Damas Iniciación"],
+  mixto: ["Mixto A", "Mixto B", "Mixto C", "Mixto D", "Mixto Iniciación"],
+};
+type CategoryType = keyof typeof categoryOptions;
+
+const categorySchema = z.object({
+  id: z.string(),
+  type: z.enum(["varones", "damas", "mixto"], { required_error: "Debes seleccionar un tipo de categoría." }),
+  level: z.string().min(1, { message: "Debes seleccionar un nivel para la categoría." }),
+});
 
 const playerSchema = z.object({
-  id: z.string().optional(), // Optional, could be generated
+  id: z.string().optional(),
   name: z.string().min(2, { message: "El nombre debe tener al menos 2 caracteres." }),
   rut: z.string().min(8, { message: "El RUT debe tener un formato válido (ej: 12345678-9)." })
     .regex(/^\d{7,8}-[\dkK]$/, { message: "RUT inválido. Formato: 12345678-9 o 12345678-K." }),
   position: z.enum(["drive", "reves", "ambos"], { required_error: "Debes seleccionar una posición." }),
+  categoryId: z.string().min(1, { message: "Debes asignar el jugador a una categoría." }),
 });
 
 const tournamentFormSchema = z.object({
@@ -51,14 +66,17 @@ const tournamentFormSchema = z.object({
   date: z.date({ required_error: "La fecha es obligatoria." }),
   time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: "Formato de hora inválido (HH:MM)." }),
   place: z.string().min(3, { message: "El lugar debe tener al menos 3 caracteres." }),
-  players: z.array(playerSchema).min(1, { message: "Debe haber al menos un jugador inscrito." }),
+  categories: z.array(categorySchema).min(1, { message: "Debe haber al menos una categoría en el torneo." }),
+  players: z.array(playerSchema), // No es obligatorio tener jugadores al crear el torneo inicialmente
 });
 
 type TournamentFormValues = z.infer<typeof tournamentFormSchema>;
 type PlayerFormValues = z.infer<typeof playerSchema>;
+type CategoryFormValues = z.infer<typeof categorySchema>;
 
 export default function RandomTournamentPage() {
   const { toast } = useToast();
+  const [selectedCategoryTypeForNew, setSelectedCategoryTypeForNew] = useState<CategoryType | "">("");
 
   const form = useForm<TournamentFormValues>({
     resolver: zodResolver(tournamentFormSchema),
@@ -66,13 +84,27 @@ export default function RandomTournamentPage() {
       tournamentName: "",
       time: "",
       place: "",
+      categories: [],
       players: [],
     },
   });
 
-  const { fields, append, remove } = useFieldArray({
+  const { fields: categoryFields, append: appendCategory, remove: removeCategory } = useFieldArray({
+    control: form.control,
+    name: "categories",
+  });
+
+  const { fields: playerFields, append: appendPlayer, remove: removePlayer } = useFieldArray({
     control: form.control,
     name: "players",
+  });
+
+  const categoryForm = useForm<Omit<CategoryFormValues, 'id'>>({
+    resolver: zodResolver(categorySchema.omit({id: true})),
+    defaultValues: {
+      type: undefined,
+      level: "",
+    },
   });
 
   const playerForm = useForm<PlayerFormValues>({
@@ -81,8 +113,11 @@ export default function RandomTournamentPage() {
       name: "",
       rut: "",
       position: undefined,
+      categoryId: "",
     },
   });
+  
+  const watchedCategories = form.watch("categories");
 
   function onSubmitTournament(data: TournamentFormValues) {
     console.log("Tournament Data:", data);
@@ -94,23 +129,41 @@ export default function RandomTournamentPage() {
         </pre>
       ),
     });
-    // Here you would typically send the data to a backend
-    // For now, we'll just log it and reset the form if needed
+  }
+
+  function handleAddCategory(categoryData: Omit<CategoryFormValues, 'id'>) {
+    const categoryExists = categoryFields.some(c => c.type === categoryData.type && c.level === categoryData.level);
+    if (categoryExists) {
+      categoryForm.setError("level", { type: "manual", message: "Esta categoría (tipo y nivel) ya existe." });
+      return;
+    }
+    appendCategory({ ...categoryData, id: crypto.randomUUID() });
+    categoryForm.reset();
+    setSelectedCategoryTypeForNew("");
+    toast({
+      title: "Categoría Añadida",
+      description: `Categoría ${categoryData.type} - ${categoryData.level} añadida.`,
+    });
   }
 
   function handleAddPlayer(playerData: PlayerFormValues) {
-    const playerExists = fields.some(p => p.rut === playerData.rut);
-    if (playerExists) {
-      playerForm.setError("rut", { type: "manual", message: "Este RUT ya ha sido registrado." });
+    const playerExistsInSameCategory = playerFields.some(p => p.rut === playerData.rut && p.categoryId === playerData.categoryId);
+    if (playerExistsInSameCategory) {
+      playerForm.setError("rut", { type: "manual", message: "Este RUT ya ha sido registrado en esta categoría." });
       return;
     }
-    append({ ...playerData, id: crypto.randomUUID() });
+    appendPlayer({ ...playerData, id: crypto.randomUUID() });
     playerForm.reset();
     toast({
       title: "Jugador Añadido",
       description: `${playerData.name} ha sido añadido al torneo.`,
     });
   }
+  
+  const getCategoryName = (categoryId: string) => {
+    const category = watchedCategories.find(c => c.id === categoryId);
+    return category ? `${category.type} - ${category.level}` : "Categoría desconocida";
+  };
 
   return (
     <div className="container mx-auto flex flex-col items-center flex-1 py-8 px-4 md:px-6">
@@ -122,7 +175,7 @@ export default function RandomTournamentPage() {
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmitTournament)} className="w-full max-w-2xl space-y-8">
+        <form onSubmit={form.handleSubmit(onSubmitTournament)} className="w-full max-w-3xl space-y-8">
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle className="text-2xl flex items-center"><Trophy className="mr-2 h-6 w-6 text-primary" /> Detalles del Torneo</CardTitle>
@@ -142,7 +195,6 @@ export default function RandomTournamentPage() {
                   </FormItem>
                 )}
               />
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormField
                   control={form.control}
@@ -218,83 +270,223 @@ export default function RandomTournamentPage() {
 
           <Card className="shadow-lg">
             <CardHeader>
-              <CardTitle className="text-2xl flex items-center"><Users className="mr-2 h-6 w-6 text-primary" />Inscribir Jugadores</CardTitle>
-              <CardDescription>Añade los participantes del torneo.</CardDescription>
+              <CardTitle className="text-2xl flex items-center"><Layers className="mr-2 h-6 w-6 text-primary" /> Gestionar Categorías</CardTitle>
+              <CardDescription>Añade y configura las categorías del torneo.</CardDescription>
             </CardHeader>
             <CardContent>
-              <Form {...playerForm}>
-                <div className="space-y-4">
+              <Form {...categoryForm}>
+                <div className="space-y-4 p-4 border rounded-md bg-secondary/20">
+                  <FormField
+                    control={categoryForm.control}
+                    name="type"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tipo de Categoría</FormLabel>
+                        <Select 
+                          onValueChange={(value) => {
+                            field.onChange(value);
+                            setSelectedCategoryTypeForNew(value as CategoryType | "");
+                            categoryForm.setValue("level", ""); // Reset level when type changes
+                          }} 
+                          value={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecciona tipo" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="varones">Varones</SelectItem>
+                            <SelectItem value="damas">Damas</SelectItem>
+                            <SelectItem value="mixto">Mixto</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  {selectedCategoryTypeForNew && (
                     <FormField
-                      control={playerForm.control}
-                      name="name"
+                      control={categoryForm.control}
+                      name="level"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Nombre del Jugador</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Juan Pérez" {...field} />
-                          </FormControl>
+                          <FormLabel>Nivel de Categoría</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecciona nivel" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {categoryOptions[selectedCategoryTypeForNew].map(level => (
+                                <SelectItem key={level} value={level}>{level}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <FormField
-                        control={playerForm.control}
-                        name="rut"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>RUT</FormLabel>
-                            <FormControl>
-                              <Input placeholder="12345678-9" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={playerForm.control}
-                        name="position"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Posición</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Selecciona posición" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="drive">Drive</SelectItem>
-                                <SelectItem value="reves">Revés</SelectItem>
-                                <SelectItem value="ambos">Ambos</SelectItem
-                                >
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  <Button type="button" onClick={playerForm.handleSubmit(handleAddPlayer)} className="w-full md:w-auto mt-2">
-                    <UserPlus className="mr-2 h-4 w-4" /> Añadir Jugador
+                  )}
+                  <Button type="button" onClick={categoryForm.handleSubmit(handleAddCategory)} className="w-full md:w-auto mt-2">
+                    <PlusCircle className="mr-2 h-4 w-4" /> Añadir Categoría
                   </Button>
                 </div>
               </Form>
 
               <Separator className="my-6" />
               
-              {fields.length > 0 && (
+              {categoryFields.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-medium mb-4">Categorías del Torneo:</h3>
+                  <ul className="space-y-3">
+                    {categoryFields.map((category, index) => (
+                      <li key={category.id} className="flex items-center justify-between p-3 bg-secondary/30 rounded-md shadow-sm">
+                        <div>
+                          <p className="font-semibold capitalize">{category.type} - {category.level}</p>
+                        </div>
+                        <Button variant="ghost" size="icon" onClick={() => {
+                          // También deberíamos remover jugadores de esta categoría o advertir.
+                          // Por simplicidad, solo la removemos. Una mejora sería preguntar confirmación.
+                          const playersInCategory = playerFields.filter(p => p.categoryId === category.id);
+                          if (playersInCategory.length > 0) {
+                            toast({
+                              title: "Advertencia",
+                              description: `La categoría ${category.type} - ${category.level} tiene jugadores inscritos. Si la eliminas, estos jugadores quedarán sin categoría. Considera reasignarlos.`,
+                              variant: "destructive"
+                            });
+                          }
+                          removeCategory(index);
+                          toast({ title: "Categoría Eliminada", description: `Categoría ${category.type} - ${category.level} eliminada.`});
+                        }}>
+                          <Trash2 className="h-5 w-5 text-destructive" />
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {categoryFields.length === 0 && (
+                <p className="text-muted-foreground text-center py-4">Aún no hay categorías añadidas al torneo.</p>
+              )}
+               <FormField
+                control={form.control}
+                name="categories"
+                render={() => ( <FormMessage className="mt-2 text-center" /> )}
+              />
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle className="text-2xl flex items-center"><Users className="mr-2 h-6 w-6 text-primary" />Inscribir Jugadores</CardTitle>
+              <CardDescription>Añade los participantes del torneo a las categorías correspondientes.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {watchedCategories.length === 0 ? (
+                <p className="text-muted-foreground text-center py-4">
+                  Debes añadir al menos una categoría al torneo antes de inscribir jugadores.
+                </p>
+              ) : (
+                <Form {...playerForm}>
+                  <div className="space-y-4 p-4 border rounded-md bg-secondary/20">
+                      <FormField
+                        control={playerForm.control}
+                        name="name"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Nombre del Jugador</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Juan Pérez" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FormField
+                          control={playerForm.control}
+                          name="rut"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>RUT</FormLabel>
+                              <FormControl>
+                                <Input placeholder="12345678-9" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={playerForm.control}
+                          name="position"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Posición</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Selecciona posición" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="drive">Drive</SelectItem>
+                                  <SelectItem value="reves">Revés</SelectItem>
+                                  <SelectItem value="ambos">Ambos</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                      <FormField
+                        control={playerForm.control}
+                        name="categoryId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="flex items-center"><Tag className="mr-2 h-4 w-4 text-muted-foreground" />Asignar a Categoría</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Selecciona categoría para el jugador" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {watchedCategories.map(cat => (
+                                  <SelectItem key={cat.id} value={cat.id}>
+                                    {cat.type} - {cat.level}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    <Button type="button" onClick={playerForm.handleSubmit(handleAddPlayer)} className="w-full md:w-auto mt-2">
+                      <UserPlus className="mr-2 h-4 w-4" /> Añadir Jugador
+                    </Button>
+                  </div>
+                </Form>
+              )}
+
+              <Separator className="my-6" />
+              
+              {playerFields.length > 0 && (
                 <div>
                   <h3 className="text-lg font-medium mb-4">Jugadores Inscritos:</h3>
                   <ul className="space-y-3">
-                    {fields.map((player, index) => (
+                    {playerFields.map((player, index) => (
                       <li key={player.id} className="flex items-center justify-between p-3 bg-secondary/30 rounded-md shadow-sm">
                         <div>
                           <p className="font-semibold">{player.name}</p>
                           <p className="text-sm text-muted-foreground">RUT: {player.rut} - Posición: <span className="capitalize">{player.position}</span></p>
+                           <p className="text-sm text-muted-foreground">Categoría: {getCategoryName(player.categoryId)}</p>
                         </div>
                         <Button variant="ghost" size="icon" onClick={() => {
-                          remove(index);
+                          removePlayer(index);
                           toast({ title: "Jugador Eliminado", description: `${player.name} ha sido eliminado.`});
                         }}>
                           <Trash2 className="h-5 w-5 text-destructive" />
@@ -304,15 +496,9 @@ export default function RandomTournamentPage() {
                   </ul>
                 </div>
               )}
-              {fields.length === 0 && (
+              {playerFields.length === 0 && watchedCategories.length > 0 && (
                 <p className="text-muted-foreground text-center py-4">Aún no hay jugadores inscritos.</p>
               )}
-              <FormField
-                control={form.control}
-                name="players"
-                render={() => ( <FormMessage className="mt-2 text-center" /> )}
-              />
-
             </CardContent>
           </Card>
           
@@ -323,7 +509,7 @@ export default function RandomTournamentPage() {
               </Button>
             </Link>
             <Button type="submit" className="w-full sm:w-auto">
-              <Shuffle className="mr-2 h-4 w-4" /> Registrar Torneo
+              <Shuffle className="mr-2 h-4 w-4" /> Registrar Torneo y Generar Partidos
             </Button>
           </div>
         </form>
@@ -331,5 +517,6 @@ export default function RandomTournamentPage() {
     </div>
   );
 }
+    
 
     
