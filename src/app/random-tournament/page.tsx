@@ -7,7 +7,7 @@ import * as z from "zod";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import Link from "next/link";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,19 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { CalendarIcon, Shuffle, Trash2, UserPlus, Users, Trophy, MapPin, Clock, FileText, XCircle, Layers, PlusCircle, Tag, TestTube2 } from "lucide-react";
+import { 
+  CalendarIcon, Shuffle, Trash2, UserPlus, Users, Trophy, MapPin, Clock, FileText, XCircle, Layers, PlusCircle, Tag, TestTube2, Pencil
+} from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog";
 
 const categoryOptions = {
   varones: ["1° Categoría", "2° Categoría", "3° Categoría", "4° Categoría", "5° Categoría", "6° Categoría"],
@@ -78,6 +90,8 @@ type CategoryFormValues = z.infer<typeof categorySchema>;
 export default function RandomTournamentPage() {
   const { toast } = useToast();
   const [selectedCategoryTypeForNew, setSelectedCategoryTypeForNew] = useState<CategoryType | "">("");
+  const [editingPlayer, setEditingPlayer] = useState<PlayerFormValues & { originalIndex: number } | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const form = useForm<TournamentFormValues>({
     resolver: zodResolver(tournamentFormSchema),
@@ -95,7 +109,7 @@ export default function RandomTournamentPage() {
     name: "categories",
   });
 
-  const { fields: playerFields, append: appendPlayer, remove: removePlayer, replace: replacePlayers } = useFieldArray({
+  const { fields: playerFields, append: appendPlayer, remove: removePlayer, update: updatePlayer, replace: replacePlayers } = useFieldArray({
     control: form.control,
     name: "players",
   });
@@ -117,9 +131,25 @@ export default function RandomTournamentPage() {
       categoryId: "",
     },
   });
+  
+  const editPlayerForm = useForm<PlayerFormValues>({
+    resolver: zodResolver(playerSchema),
+  });
 
   const watchedCategories = form.watch("categories");
   const watchedPlayers = form.watch("players");
+
+  useEffect(() => {
+    if (editingPlayer) {
+      editPlayerForm.reset({
+        id: editingPlayer.id,
+        name: editingPlayer.name,
+        rut: editingPlayer.rut,
+        position: editingPlayer.position,
+        categoryId: editingPlayer.categoryId,
+      });
+    }
+  }, [editingPlayer, editPlayerForm]);
 
   function onSubmitTournament(data: TournamentFormValues) {
     console.log("Tournament Data:", data);
@@ -161,6 +191,46 @@ export default function RandomTournamentPage() {
       description: `${playerData.name} ha sido añadido al torneo.`,
     });
   }
+  
+  function handleOpenEditPlayerModal(player: PlayerFormValues, index: number) {
+    const playerGlobalIndex = watchedPlayers.findIndex(p => p.id === player.id);
+    if (playerGlobalIndex === -1) {
+        toast({ title: "Error", description: "No se pudo encontrar el jugador para editar.", variant: "destructive"});
+        return;
+    }
+    setEditingPlayer({ ...player, originalIndex: playerGlobalIndex });
+    setIsEditModalOpen(true);
+  }
+
+  function handleUpdatePlayer(data: PlayerFormValues) {
+    if (!editingPlayer) return;
+
+    // Verificar si el RUT ha cambiado y si ya existe en la misma categoría (excluyendo al propio jugador)
+    const rutChanged = data.rut !== editingPlayer.rut;
+    const categoryChanged = data.categoryId !== editingPlayer.categoryId;
+
+    if (rutChanged || categoryChanged) {
+      const playerExistsInSameCategory = playerFields.some(
+        (p, index) =>
+          p.rut === data.rut &&
+          p.categoryId === data.categoryId &&
+          index !== editingPlayer.originalIndex
+      );
+      if (playerExistsInSameCategory) {
+        editPlayerForm.setError("rut", { type: "manual", message: "Este RUT ya está registrado en esta categoría." });
+        return;
+      }
+    }
+
+    updatePlayer(editingPlayer.originalIndex, data);
+    toast({
+      title: "Jugador Actualizado",
+      description: `Los datos de ${data.name} han sido actualizados.`,
+    });
+    setIsEditModalOpen(false);
+    setEditingPlayer(null);
+  }
+
 
   const getCategoryName = (categoryId: string) => {
     const category = watchedCategories.find(c => c.id === categoryId);
@@ -169,7 +239,6 @@ export default function RandomTournamentPage() {
   
   const getCategoryShortName = (category: CategoryFormValues) => {
     const type = category.type === "varones" ? "Var" : category.type === "damas" ? "Dam" : "Mix";
-    // Extraer primera palabra o número del nivel para hacerlo más corto si es posible
     const levelShort = category.level.split(" ")[0];
     return `${type}. ${levelShort}`;
   }
@@ -183,25 +252,21 @@ export default function RandomTournamentPage() {
       categories: [],
       players: [],
     });
-    replaceCategories([]); // Asegura que las categorías se reseteen correctamente
-    replacePlayers([]);   // Asegura que los jugadores se reseteen correctamente
-
-    // Es importante llamar a replaceCategories *antes* de appendCategory para que watchedCategories se actualice
-    // y los IDs sean consistentes al agregar jugadores.
-    // O mejor aún, construir el array y luego hacer un solo replace.
+    replaceCategories([]); 
+    replacePlayers([]);   
     
     const testCategoriesArray: CategoryFormValues[] = [
       { id: crypto.randomUUID(), type: "varones", level: "3° Categoría" },
       { id: crypto.randomUUID(), type: "damas", level: "Categoría B" },
     ];
     
-    replaceCategories(testCategoriesArray); // Reemplaza las categorías con las nuevas de prueba
+    replaceCategories(testCategoriesArray); 
 
     const newPlayersArray: PlayerFormValues[] = [];
     const positions: PlayerFormValues["position"][] = ["drive", "reves", "ambos"];
 
     for (let i = 0; i < 40; i++) {
-      const categoryIndex = i < 20 ? 0 : 1; // Asigna a las categorías de testCategoriesArray
+      const categoryIndex = i < 20 ? 0 : 1; 
       const rutBase = 10000000 + i * 1000 + Math.floor(Math.random() * 1000);
       const dvOptions = [...Array(10).keys()].map(String).concat(['K']);
       const dv = dvOptions[Math.floor(Math.random() * dvOptions.length)];
@@ -211,10 +276,10 @@ export default function RandomTournamentPage() {
         name: `Jugador ${i + 1}`,
         rut: `${rutBase}-${dv}`,
         position: positions[i % 3],
-        categoryId: testCategoriesArray[categoryIndex].id, // Usa el ID de la categoría de prueba
+        categoryId: testCategoriesArray[categoryIndex].id, 
       });
     }
-    replacePlayers(newPlayersArray); // Reemplaza los jugadores con los nuevos de prueba
+    replacePlayers(newPlayersArray); 
 
 
     toast({
@@ -419,20 +484,8 @@ export default function RandomTournamentPage() {
                               description: `La categoría ${category.type} - ${category.level} tiene ${playersInCategory.length} jugador(es) inscrito(s). Si la eliminas, estos jugadores quedarán sin categoría o serán eliminados (dependiendo de la lógica futura).`,
                               variant: "destructive"
                             });
-                            // Podrías decidir aquí si también eliminar los jugadores o reasignarlos
                           }
                           removeCategory(index);
-                          // Opcional: Actualizar jugadores cuya categoría fue eliminada.
-                          // Podrías filtrar playerFields y re-setearlos con `replacePlayers` si necesitas
-                          // cambiar el categoryId de los jugadores afectados a "" o null.
-                          // Por ejemplo:
-                          // const updatedPlayers = playerFields.filter(p => p.categoryId !== category.id);
-                          // replacePlayers(updatedPlayers);
-                          // O, si quieres mantenerlos pero sin categoría válida:
-                          // const playersToUpdate = playerFields
-                          //  .map(p => p.categoryId === category.id ? {...p, categoryId: ""} : p );
-                          // replacePlayers(playersToUpdate);
-
                           toast({ title: "Categoría Eliminada", description: `Categoría ${category.type} - ${category.level} eliminada.`});
                         }}>
                           <Trash2 className="h-5 w-5 text-destructive" />
@@ -575,15 +628,20 @@ export default function RandomTournamentPage() {
                                       <p className="text-sm text-muted-foreground">RUT: {player.rut} - Posición: <span className="capitalize">{player.position}</span></p>
                                     </div>
                                   </div>
-                                  <Button variant="ghost" size="icon" onClick={() => {
-                                    const playerGlobalIndex = watchedPlayers.findIndex(p => p.id === player.id);
-                                    if (playerGlobalIndex !== -1) {
-                                      removePlayer(playerGlobalIndex);
-                                      toast({ title: "Jugador Eliminado", description: `${player.name} ha sido eliminado de la categoría ${getCategoryName(player.categoryId)}.`});
-                                    }
-                                  }}>
-                                    <Trash2 className="h-5 w-5 text-destructive" />
-                                  </Button>
+                                  <div className="flex items-center space-x-1">
+                                    <Button variant="ghost" size="icon" onClick={() => handleOpenEditPlayerModal(player, playerIndex)}>
+                                      <Pencil className="h-5 w-5 text-blue-500" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" onClick={() => {
+                                      const playerGlobalIndex = watchedPlayers.findIndex(p => p.id === player.id);
+                                      if (playerGlobalIndex !== -1) {
+                                        removePlayer(playerGlobalIndex);
+                                        toast({ title: "Jugador Eliminado", description: `${player.name} ha sido eliminado de la categoría ${getCategoryName(player.categoryId)}.`});
+                                      }
+                                    }}>
+                                      <Trash2 className="h-5 w-5 text-destructive" />
+                                    </Button>
+                                  </div>
                                 </li>
                               ))}
                             </ul>
@@ -615,9 +673,107 @@ export default function RandomTournamentPage() {
           </div>
         </form>
       </Form>
+
+      {editingPlayer && (
+        <Dialog open={isEditModalOpen} onOpenChange={(isOpen) => {
+          setIsEditModalOpen(isOpen);
+          if (!isOpen) setEditingPlayer(null);
+        }}>
+          <DialogContent className="sm:max-w-[425px]">
+            <Form {...editPlayerForm}>
+              <form onSubmit={editPlayerForm.handleSubmit(handleUpdatePlayer)}>
+                <DialogHeader>
+                  <DialogTitle>Editar Jugador</DialogTitle>
+                  <DialogDescription>
+                    Modifica los datos de {editingPlayer.name}. Haz clic en guardar cuando termines.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <FormField
+                    control={editPlayerForm.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Nombre del Jugador</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editPlayerForm.control}
+                    name="rut"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>RUT</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editPlayerForm.control}
+                    name="position"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Posición</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecciona posición" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="drive">Drive</SelectItem>
+                            <SelectItem value="reves">Revés</SelectItem>
+                            <SelectItem value="ambos">Ambos</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editPlayerForm.control}
+                    name="categoryId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Categoría</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecciona categoría" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {watchedCategories.map(cat => (
+                              <SelectItem key={cat.id} value={cat.id}>
+                                {cat.type} - {cat.level}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button type="button" variant="outline">Cancelar</Button>
+                  </DialogClose>
+                  <Button type="submit">Guardar Cambios</Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
-    
-
     
