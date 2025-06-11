@@ -7,7 +7,7 @@ export default function Home() {
     <div className="container mx-auto flex flex-col items-center justify-center flex-1 py-12 px-4 md:px-6">
       <div className="text-center mb-12 md:mb-16">
         <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold font-headline text-primary">
-          UnPadelcito ?
+          unpadelcito?
         </h1>
         <p className="text-muted-foreground mt-4 text-lg md:text-xl max-w-2xl mx-auto">
           Organiza y participa en torneos de pádel de forma fácil y divertida.

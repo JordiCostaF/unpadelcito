@@ -3,7 +3,7 @@ import './globals.css';
 import { MainLayout } from '@/components/layout/MainLayout';
 
 export const metadata: Metadata = {
-  title: 'UnPadelazo',
+  title: 'unpadelcito',
   description: 'Tu app para organizar partidos de pádel.',
 };
 
