@@ -1,6 +1,7 @@
+
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Shuffle, Swords, History as HistoryIcon } from 'lucide-react';
+import { Shuffle, Swords, History as HistoryIcon, Activity } from 'lucide-react';
 
 export default function Home() {
   return (
@@ -14,10 +15,10 @@ export default function Home() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 w-full max-w-5xl">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-6 md:gap-8 w-full max-w-5xl">
         <Link href="/random-tournament" passHref>
-          <Button 
-            variant="default" 
+          <Button
+            variant="default"
             className="w-full h-36 md:h-40 text-lg sm:text-xl rounded-xl shadow-lg hover:shadow-primary/40 focus:shadow-primary/40 transform hover:scale-105 transition-all duration-300 ease-out flex flex-col items-center justify-center p-4"
             aria-label="Ir a Torneo Random"
           >
@@ -26,8 +27,8 @@ export default function Home() {
           </Button>
         </Link>
         <Link href="/tournament" passHref>
-          <Button 
-            variant="default" 
+          <Button
+            variant="default"
             className="w-full h-36 md:h-40 text-lg sm:text-xl rounded-xl shadow-lg hover:shadow-primary/40 focus:shadow-primary/40 transform hover:scale-105 transition-all duration-300 ease-out flex flex-col items-center justify-center p-4"
             aria-label="Ir a Torneo"
           >
@@ -35,9 +36,19 @@ export default function Home() {
             Torneo
           </Button>
         </Link>
+        <Link href="/active-tournament" passHref>
+          <Button
+            variant="default"
+            className="w-full h-36 md:h-40 text-lg sm:text-xl rounded-xl shadow-lg hover:shadow-primary/40 focus:shadow-primary/40 transform hover:scale-105 transition-all duration-300 ease-out flex flex-col items-center justify-center p-4"
+            aria-label="Ir a Torneo Activo"
+          >
+            <Activity className="mb-2 h-10 w-10 md:h-12 md:w-12" />
+            Torneo Activo
+          </Button>
+        </Link>
         <Link href="/history" passHref>
-          <Button 
-            variant="default" 
+          <Button
+            variant="default"
             className="w-full h-36 md:h-40 text-lg sm:text-xl rounded-xl shadow-lg hover:shadow-primary/40 focus:shadow-primary/40 transform hover:scale-105 transition-all duration-300 ease-out flex flex-col items-center justify-center p-4"
             aria-label="Ir a Histórico"
           >
