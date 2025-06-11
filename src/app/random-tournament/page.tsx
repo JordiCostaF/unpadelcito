@@ -168,7 +168,10 @@ export default function RandomTournamentPage() {
   };
   
   const getCategoryShortName = (category: CategoryFormValues) => {
-    return `${category.type.substring(0,3)}. ${category.level}`;
+    const type = category.type === "varones" ? "Var" : category.type === "damas" ? "Dam" : "Mix";
+    // Extraer primera palabra o número del nivel para hacerlo más corto si es posible
+    const levelShort = category.level.split(" ")[0];
+    return `${type}. ${levelShort}`;
   }
 
   const fillWithTestData = () => {
@@ -180,32 +183,39 @@ export default function RandomTournamentPage() {
       categories: [],
       players: [],
     });
-    replaceCategories([]);
-    replacePlayers([]);
+    replaceCategories([]); // Asegura que las categorías se reseteen correctamente
+    replacePlayers([]);   // Asegura que los jugadores se reseteen correctamente
 
-    const testCategories: CategoryFormValues[] = [
+    // Es importante llamar a replaceCategories *antes* de appendCategory para que watchedCategories se actualice
+    // y los IDs sean consistentes al agregar jugadores.
+    // O mejor aún, construir el array y luego hacer un solo replace.
+    
+    const testCategoriesArray: CategoryFormValues[] = [
       { id: crypto.randomUUID(), type: "varones", level: "3° Categoría" },
       { id: crypto.randomUUID(), type: "damas", level: "Categoría B" },
     ];
+    
+    replaceCategories(testCategoriesArray); // Reemplaza las categorías con las nuevas de prueba
 
-    testCategories.forEach(cat => appendCategory(cat));
-
-    const newPlayers: PlayerFormValues[] = [];
+    const newPlayersArray: PlayerFormValues[] = [];
     const positions: PlayerFormValues["position"][] = ["drive", "reves", "ambos"];
 
     for (let i = 0; i < 40; i++) {
-      const categoryIndex = i < 20 ? 0 : 1;
+      const categoryIndex = i < 20 ? 0 : 1; // Asigna a las categorías de testCategoriesArray
       const rutBase = 10000000 + i * 1000 + Math.floor(Math.random() * 1000);
-      const dv = Math.random() > 0.5 ? Math.floor(Math.random() * 10).toString() : "K";
-      newPlayers.push({
+      const dvOptions = [...Array(10).keys()].map(String).concat(['K']);
+      const dv = dvOptions[Math.floor(Math.random() * dvOptions.length)];
+      
+      newPlayersArray.push({
         id: crypto.randomUUID(),
         name: `Jugador ${i + 1}`,
         rut: `${rutBase}-${dv}`,
         position: positions[i % 3],
-        categoryId: testCategories[categoryIndex].id,
+        categoryId: testCategoriesArray[categoryIndex].id, // Usa el ID de la categoría de prueba
       });
     }
-    newPlayers.forEach(player => appendPlayer(player));
+    replacePlayers(newPlayersArray); // Reemplaza los jugadores con los nuevos de prueba
+
 
     toast({
       title: "Datos de Prueba Cargados",
@@ -406,31 +416,22 @@ export default function RandomTournamentPage() {
                           if (playersInCategory.length > 0) {
                             toast({
                               title: "Advertencia",
-                              description: `La categoría ${category.type} - ${category.level} tiene ${playersInCategory.length} jugador(es) inscrito(s). Si la eliminas, estos jugadores quedarán sin categoría.`,
+                              description: `La categoría ${category.type} - ${category.level} tiene ${playersInCategory.length} jugador(es) inscrito(s). Si la eliminas, estos jugadores quedarán sin categoría o serán eliminados (dependiendo de la lógica futura).`,
                               variant: "destructive"
                             });
+                            // Podrías decidir aquí si también eliminar los jugadores o reasignarlos
                           }
                           removeCategory(index);
-                          // Actualizar jugadores que estaban en la categoría eliminada
-                          const updatedPlayers = playerFields
-                            .filter(p => p.categoryId !== category.id)
-                            .map(p => ({...p})); // shallow copy to avoid issues with field array
-                          
-                          // Opcional: Mover jugadores a una categoría "Sin asignar" o similar, o simplemente eliminarlos de la lista si se elimina la categoría
-                          // Por ahora, los jugadores cuya categoría se eliminó no se modificarán explícitamente aquí,
-                          // pero ya no tendrán una categoría válida en el selector o al listar.
-                          // Podrías setear su categoryId a "" o un valor especial.
-                          
-                          // Si decides reasignar, aquí iría la lógica para actualizar el categoryId de los jugadores afectados.
-                          // Ejemplo:
-                          // const playersToUpdate = playerFields.filter(p => p.categoryId === category.id);
-                          // playersToUpdate.forEach(player => {
-                          //   const playerIndex = playerFields.findIndex(p => p.id === player.id);
-                          //   if (playerIndex !== -1) {
-                          //     // updatePlayer(playerIndex, { ...player, categoryId: "" }); // Asumiendo que tienes una función updatePlayer
-                          //     // O bien, manejar esto al momento de listar o procesar los jugadores.
-                          //   }
-                          // });
+                          // Opcional: Actualizar jugadores cuya categoría fue eliminada.
+                          // Podrías filtrar playerFields y re-setearlos con `replacePlayers` si necesitas
+                          // cambiar el categoryId de los jugadores afectados a "" o null.
+                          // Por ejemplo:
+                          // const updatedPlayers = playerFields.filter(p => p.categoryId !== category.id);
+                          // replacePlayers(updatedPlayers);
+                          // O, si quieres mantenerlos pero sin categoría válida:
+                          // const playersToUpdate = playerFields
+                          //  .map(p => p.categoryId === category.id ? {...p, categoryId: ""} : p );
+                          // replacePlayers(playersToUpdate);
 
                           toast({ title: "Categoría Eliminada", description: `Categoría ${category.type} - ${category.level} eliminada.`});
                         }}>
@@ -552,9 +553,9 @@ export default function RandomTournamentPage() {
                 <div>
                   <h3 className="text-lg font-medium mb-4">Jugadores Inscritos:</h3>
                   <Tabs defaultValue={watchedCategories[0]?.id || "no-category"} className="w-full">
-                    <TabsList className="grid w-full grid-cols-min-1fr md:grid-cols-none md:flex md:flex-wrap">
+                    <TabsList className="grid w-full grid-cols-min-1fr md:grid-cols-none md:flex md:flex-wrap justify-start">
                       {watchedCategories.map((category) => (
-                        <TabsTrigger key={category.id} value={category.id} className="capitalize truncate">
+                        <TabsTrigger key={category.id} value={category.id} className="capitalize truncate text-xs sm:text-sm px-2 sm:px-3">
                           {getCategoryShortName(category)}
                         </TabsTrigger>
                       ))}
@@ -565,11 +566,14 @@ export default function RandomTournamentPage() {
                         <TabsContent key={category.id} value={category.id}>
                           {playersInCategory.length > 0 ? (
                             <ul className="space-y-3 mt-4">
-                              {playersInCategory.map((player, index) => (
-                                <li key={player.id || index} className="flex items-center justify-between p-3 bg-secondary/30 rounded-md shadow-sm">
-                                  <div>
-                                    <p className="font-semibold">{player.name}</p>
-                                    <p className="text-sm text-muted-foreground">RUT: {player.rut} - Posición: <span className="capitalize">{player.position}</span></p>
+                              {playersInCategory.map((player, playerIndex) => (
+                                <li key={player.id || playerIndex} className="flex items-center justify-between p-3 bg-secondary/30 rounded-md shadow-sm">
+                                  <div className="flex items-start space-x-3">
+                                    <span className="text-sm font-medium text-primary pt-0.5 w-6 text-right">{playerIndex + 1}.</span>
+                                    <div>
+                                      <p className="font-semibold">{player.name}</p>
+                                      <p className="text-sm text-muted-foreground">RUT: {player.rut} - Posición: <span className="capitalize">{player.position}</span></p>
+                                    </div>
                                   </div>
                                   <Button variant="ghost" size="icon" onClick={() => {
                                     const playerGlobalIndex = watchedPlayers.findIndex(p => p.id === player.id);
