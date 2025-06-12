@@ -251,9 +251,10 @@ export default function ActiveTournamentPage() {
     const [hours, minutes] = torneo.time ? torneo.time.split(':').map(Number) : [9, 0];
     tournamentStartDate.setHours(hours, minutes, 0, 0);
 
-    const occupiedSlots: Array<Array<OccupiedSlotInfo | null>> = [];
-    const lastPlayedTimeSlotByDupla: Map<string, number> = new Map(); 
-    let maxTimeSlotOverall = -1; 
+    // Global tracking for the entire tournament
+    const occupiedSlots: Array<Array<OccupiedSlotInfo | null>> = []; // [timeSlotIndex][courtIndex]
+    const lastPlayedTimeSlotByDupla: Map<string, number> = new Map(); // DuplaId -> globalTimeSlotIndex
+    let maxTimeSlotOverall = -1; // Tracks the latest time slot used across all categories
 
     torneo.categoriesWithDuplas.forEach(category => {
       if (!category || category.duplas.length < 2) { 
@@ -271,6 +272,12 @@ export default function ActiveTournamentPage() {
       const numCategoryDuplas = categoryDuplas.length;
       let groupLetter = 'A';
 
+      // Initialize rest status for duplas in this category
+      const duplaRestStatusInCategory: Map<string, boolean> = new Map();
+      category.duplas.forEach(dupla => duplaRestStatusInCategory.set(dupla.id, false));
+
+
+      // Grouping logic (same as before)
       if (numCategoryDuplas < 3) {
          groups.push({
             id: `${category.id}-G${groupLetter}`,
@@ -287,40 +294,19 @@ export default function ActiveTournamentPage() {
         while(duplasToAssign > 0) {
             let currentGroupSize = Math.min(duplasToAssign, idealGroupSize);
             if (duplasToAssign - currentGroupSize > 0 && duplasToAssign - currentGroupSize < 3) {
-                 if (groups.length > 0 && duplasToAssign < idealGroupSize && duplasToAssign < 3) { // Attempt to balance last group
+                 if (groups.length > 0 && duplasToAssign < idealGroupSize && duplasToAssign < 3) { 
                     const groupDuplas = categoryDuplas.splice(0, duplasToAssign);
-                     groups.push({
-                        id: `${category.id}-G${groupLetter}`,
-                        name: `Grupo ${groupLetter}`,
-                        duplas: groupDuplas,
-                        standings: groupDuplas.map(d => ({ duplaId: d.id, duplaName: d.nombre, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0, pts: 0 })),
-                        matches: [],
-                        rawMatches: []
-                     });
+                     groups.push({ id: `${category.id}-G${groupLetter}`, name: `Grupo ${groupLetter}`, duplas: groupDuplas, standings: groupDuplas.map(d => ({ duplaId: d.id, duplaName: d.nombre, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0, pts: 0 })), matches: [], rawMatches: [] });
                      duplasToAssign = 0; 
-                 } else { // Force a group of at least 3 if possible
+                 } else { 
                     currentGroupSize = Math.max(3, Math.min(duplasToAssign, currentGroupSize)); 
                     const groupDuplas = categoryDuplas.splice(0, currentGroupSize);
-                    groups.push({
-                        id: `${category.id}-G${groupLetter}`,
-                        name: `Grupo ${groupLetter}`,
-                        duplas: groupDuplas,
-                        standings: groupDuplas.map(d => ({ duplaId: d.id, duplaName: d.nombre, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0, pts: 0 })),
-                        matches: [],
-                        rawMatches: []
-                    });
+                    groups.push({ id: `${category.id}-G${groupLetter}`, name: `Grupo ${groupLetter}`, duplas: groupDuplas, standings: groupDuplas.map(d => ({ duplaId: d.id, duplaName: d.nombre, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0, pts: 0 })), matches: [], rawMatches: [] });
                     duplasToAssign -= groupDuplas.length;
                  }
             } else {
                  const groupDuplas = categoryDuplas.splice(0, currentGroupSize);
-                 groups.push({
-                    id: `${category.id}-G${groupLetter}`,
-                    name: `Grupo ${groupLetter}`,
-                    duplas: groupDuplas,
-                    standings: groupDuplas.map(d => ({ duplaId: d.id, duplaName: d.nombre, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0, pts: 0 })),
-                    matches: [],
-                    rawMatches: []
-                 });
+                 groups.push({ id: `${category.id}-G${groupLetter}`, name: `Grupo ${groupLetter}`, duplas: groupDuplas, standings: groupDuplas.map(d => ({ duplaId: d.id, duplaName: d.nombre, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0, pts: 0 })), matches: [], rawMatches: [] });
                  duplasToAssign -= groupDuplas.length;
             }
             groupLetter = String.fromCharCode(groupLetter.charCodeAt(0) + 1);
@@ -328,7 +314,6 @@ export default function ActiveTournamentPage() {
         }
       }
       
-      // Generate raw matches for each group first
       let maxMatchesInAnyGroup = 0;
       groups.forEach(group => {
         group.rawMatches = [];
@@ -336,22 +321,13 @@ export default function ActiveTournamentPage() {
         for (let i = 0; i < group.duplas.length; i++) {
           for (let j = i + 1; j < group.duplas.length; j++) {
             const matchId = `${group.id}-M${matchCounterInGroup + 1}`;
-            group.rawMatches.push({
-              id: matchId,
-              dupla1: group.duplas[i],
-              dupla2: group.duplas[j],
-              status: 'pending',
-              groupOriginId: group.id,
-            });
+            group.rawMatches.push({ id: matchId, dupla1: group.duplas[i], dupla2: group.duplas[j], status: 'pending', groupOriginId: group.id });
             matchCounterInGroup++;
           }
         }
-        if (group.rawMatches.length > maxMatchesInAnyGroup) {
-          maxMatchesInAnyGroup = group.rawMatches.length;
-        }
+        if (group.rawMatches.length > maxMatchesInAnyGroup) maxMatchesInAnyGroup = group.rawMatches.length;
       });
 
-      // Interleave matches for scheduling to promote parallelism
       const allCategoryMatchesForScheduling: Match[] = [];
       for (let roundIdx = 0; roundIdx < maxMatchesInAnyGroup; roundIdx++) {
         groups.forEach(group => {
@@ -361,12 +337,24 @@ export default function ActiveTournamentPage() {
         });
       }
       
+      // Scheduling loop for group matches of the current category
       allCategoryMatchesForScheduling.forEach(match => {
         let scheduled = false;
         let attempts = 0; 
-        let timeSlotToTryForThisMatch = 0;
+        // Start searching from the next available global slot or slot 0 if first category
+        let timeSlotToTryForThisMatch = maxTimeSlotOverall > -1 ? 0 : 0; // Check logic here, might need to be smarter based on category start
 
-        while(!scheduled && attempts < 2000) { // Increased attempts for more complex scheduling
+        while(!scheduled && attempts < 2000) {
+            // Update rest status for duplas in *this match* before checking rules for *this slot*
+            const d1 = match.dupla1;
+            const d2 = match.dupla2;
+            if (duplaRestStatusInCategory.get(d1.id) && (lastPlayedTimeSlotByDupla.get(d1.id) ?? -1) < timeSlotToTryForThisMatch) {
+                duplaRestStatusInCategory.set(d1.id, false);
+            }
+            if (duplaRestStatusInCategory.get(d2.id) && (lastPlayedTimeSlotByDupla.get(d2.id) ?? -1) < timeSlotToTryForThisMatch) {
+                duplaRestStatusInCategory.set(d2.id, false);
+            }
+
             if (!occupiedSlots[timeSlotToTryForThisMatch]) {
                 occupiedSlots[timeSlotToTryForThisMatch] = Array(numCourts).fill(null);
             }
@@ -375,11 +363,9 @@ export default function ActiveTournamentPage() {
             if (occupiedSlots[timeSlotToTryForThisMatch]) {
                 for (let courtScanIdx = 0; courtScanIdx < numCourts; courtScanIdx++) {
                     const slotContent = occupiedSlots[timeSlotToTryForThisMatch][courtScanIdx];
-                    if (slotContent) {
-                        if (slotContent.duplaIds.includes(match.dupla1.id) || slotContent.duplaIds.includes(match.dupla2.id)) {
-                            duplasAreBusyThisExactTimeSlot = true;
-                            break;
-                        }
+                    if (slotContent && (slotContent.duplaIds.includes(d1.id) || slotContent.duplaIds.includes(d2.id))) {
+                        duplasAreBusyThisExactTimeSlot = true;
+                        break;
                     }
                 }
             }
@@ -387,25 +373,27 @@ export default function ActiveTournamentPage() {
             if (duplasAreBusyThisExactTimeSlot) {
                 timeSlotToTryForThisMatch++;
                 attempts++; 
-                maxTimeSlotOverall = Math.max(maxTimeSlotOverall, timeSlotToTryForThisMatch -1); 
                 continue; 
+            }
+
+            // Strict rest check for this attempt
+            const d1NeedsRestStrict = duplaRestStatusInCategory.get(d1.id);
+            const d2NeedsRestStrict = duplaRestStatusInCategory.get(d2.id);
+
+            if (d1NeedsRestStrict || d2NeedsRestStrict) {
+                // Override conditions for rest
+                const canOverrideRest = attempts > 1800 || allCategoryMatchesForScheduling.filter(m => m.id !== match.id).length < numCourts;
+                if (!canOverrideRest) {
+                    timeSlotToTryForThisMatch++;
+                    attempts++;
+                    continue;
+                }
             }
             
             for (let courtIdx = 0; courtIdx < numCourts; courtIdx++) {
                 if (!occupiedSlots[timeSlotToTryForThisMatch] || !occupiedSlots[timeSlotToTryForThisMatch][courtIdx]) { 
-                    const dupla1LastPlay = lastPlayedTimeSlotByDupla.get(match.dupla1.id);
-                    const dupla2LastPlay = lastPlayedTimeSlotByDupla.get(match.dupla2.id);
-                    const needsRestDupla1 = dupla1LastPlay === timeSlotToTryForThisMatch -1;
-                    const needsRestDupla2 = dupla2LastPlay === timeSlotToTryForThisMatch -1;
-
-                    if (timeSlotToTryForThisMatch > 0 && (needsRestDupla1 || needsRestDupla2)) {
-                        if (attempts < 1500 && courtIdx < numCourts - 1) { 
-                             continue; 
-                        }
-                    }
-                    
-                    if (!occupiedSlots[timeSlotToTryForThisMatch]) occupiedSlots[timeSlotToTryForThisMatch] = Array(numCourts).fill(null); // Ensure row exists
-                    occupiedSlots[timeSlotToTryForThisMatch][courtIdx] = { matchId: match.id, categoryId: category.id, duplaIds: [match.dupla1.id, match.dupla2.id]};
+                    // Slot is free, schedule the match
+                    occupiedSlots[timeSlotToTryForThisMatch][courtIdx] = { matchId: match.id, categoryId: category.id, duplaIds: [d1.id, d2.id]};
                     
                     const scheduledMatch = {
                         ...match,
@@ -414,34 +402,28 @@ export default function ActiveTournamentPage() {
                     };
                     
                     const targetGroup = groups.find(g => g.id === match.groupOriginId);
-                    if (targetGroup && !targetGroup.matches.find(m => m.id === scheduledMatch.id)) {
-                         targetGroup.matches.push(scheduledMatch);
-                    } else if (targetGroup && targetGroup.matches.find(m => m.id === scheduledMatch.id)) {
-                        console.warn(`Match ${scheduledMatch.id} already in group ${targetGroup.id}, updating details.`);
-                        const existingMatchIndex = targetGroup.matches.findIndex(m => m.id === scheduledMatch.id);
-                        if (existingMatchIndex !== -1) {
-                            targetGroup.matches[existingMatchIndex] = {...targetGroup.matches[existingMatchIndex], ...scheduledMatch};
-                        }
-                    }
+                    if (targetGroup) targetGroup.matches.push(scheduledMatch);
 
-                    lastPlayedTimeSlotByDupla.set(match.dupla1.id, timeSlotToTryForThisMatch);
-                    lastPlayedTimeSlotByDupla.set(match.dupla2.id, timeSlotToTryForThisMatch);
+                    lastPlayedTimeSlotByDupla.set(d1.id, timeSlotToTryForThisMatch);
+                    lastPlayedTimeSlotByDupla.set(d2.id, timeSlotToTryForThisMatch);
+                    duplaRestStatusInCategory.set(d1.id, true); // Now they need rest
+                    duplaRestStatusInCategory.set(d2.id, true);
                     maxTimeSlotOverall = Math.max(maxTimeSlotOverall, timeSlotToTryForThisMatch);
                     scheduled = true;
                     break; 
                 }
             }
-            if (!scheduled) {
-                timeSlotToTryForThisMatch++;
-            }
+            if (!scheduled) timeSlotToTryForThisMatch++;
             attempts++;
         }
+
+        // Fallback scheduling for this match if primary attempts failed (simplified)
         if (!scheduled) {
-            console.warn(`Could not schedule match ${match.id} for category ${category.id} after ${attempts} attempts. Trying fallback.`);
+            console.warn(`Could not schedule match ${match.id} for category ${category.id} using primary logic. Using fallback.`);
             let fallbackSlot = maxTimeSlotOverall +1; 
             let fallbackScheduled = false;
             let fallbackAttempts = 0;
-            while(!fallbackScheduled && fallbackAttempts < 500) { // Increased fallback attempts
+            while(!fallbackScheduled && fallbackAttempts < 500) {
                 if (!occupiedSlots[fallbackSlot]) occupiedSlots[fallbackSlot] = Array(numCourts).fill(null);
                 
                 let duplasBusyInFallbackSlot = false;
@@ -462,42 +444,31 @@ export default function ActiveTournamentPage() {
 
                 for (let courtIdx = 0; courtIdx < numCourts; courtIdx++) {
                     if(!occupiedSlots[fallbackSlot] || !occupiedSlots[fallbackSlot][courtIdx]) {
-                        if (!occupiedSlots[fallbackSlot]) occupiedSlots[fallbackSlot] = Array(numCourts).fill(null);
                         occupiedSlots[fallbackSlot][courtIdx] = { matchId: match.id, categoryId: category.id, duplaIds: [match.dupla1.id, match.dupla2.id]};
-                        
-                        const scheduledMatch = {
-                            ...match,
-                            court: `Cancha ${courtIdx + 1} (FB)`,
-                            time: format(addMinutes(tournamentStartDate, fallbackSlot * matchDuration), "HH:mm")
-                        };
-
+                        const scheduledMatch = { ...match, court: `Cancha ${courtIdx + 1} (FB)`, time: format(addMinutes(tournamentStartDate, fallbackSlot * matchDuration), "HH:mm") };
                         const targetGroup = groups.find(g => g.id === match.groupOriginId);
-                        if (targetGroup && !targetGroup.matches.find(m => m.id === scheduledMatch.id)) { 
-                             targetGroup.matches.push(scheduledMatch);
-                        } else if (targetGroup && targetGroup.matches.find(m => m.id === scheduledMatch.id)) {
-                             console.warn(`Fallback: Match ${scheduledMatch.id} already in group ${targetGroup.id}, updating details.`);
-                              const existingMatchIndex = targetGroup.matches.findIndex(m => m.id === scheduledMatch.id);
-                              if (existingMatchIndex !== -1) {
-                                  targetGroup.matches[existingMatchIndex] = {...targetGroup.matches[existingMatchIndex], ...scheduledMatch};
-                              }
-                        }
-                        lastPlayedTimeSlotByDupla.set(match.dupla1.id, fallbackSlot);
+                        if (targetGroup) targetGroup.matches.push(scheduledMatch);
+                        
+                        lastPlayedTimeSlotByDupla.set(match.dupla1.id, fallbackSlot); // Still update these for consistency
                         lastPlayedTimeSlotByDupla.set(match.dupla2.id, fallbackSlot);
+                        // Rest status for fallback is less critical as it's an exception
+                        duplaRestStatusInCategory.set(match.dupla1.id, true); 
+                        duplaRestStatusInCategory.set(match.dupla2.id, true);
                         maxTimeSlotOverall = Math.max(maxTimeSlotOverall, fallbackSlot);
                         fallbackScheduled = true;
-                        console.log(`Fallback scheduled match ${match.id} at slot ${fallbackSlot} court ${courtIdx +1}`)
                         break;
                     }
                 }
                 if (!fallbackScheduled) fallbackSlot++;
                 fallbackAttempts++;
             }
-             if (!fallbackScheduled) console.error(`CRITICAL: Fallback failed for match ${match.id}`);
+             if (!fallbackScheduled) console.error(`CRITICAL: Fallback failed for group match ${match.id}`);
         }
-      });
+      }); // End of scheduling for allCategoryMatchesForScheduling
 
+      // Playoff scheduling for the current category
       let playoffMatchesForCategory: PlayoffMatch[] | undefined = undefined;
-      if (groups.length === 2) {
+      if (groups.length === 2) { // Assuming playoffs only for 2 groups for now
         const placeholderDuplaW_G1 = {id: 'placeholder-G1W', nombre: 'Ganador Grupo A', jugadores:[] as any};
         const placeholderDuplaRU_G1 = {id: 'placeholder-G1RU', nombre: 'Segundo Grupo A', jugadores:[] as any};
         const placeholderDuplaW_G2 = {id: 'placeholder-G2W', nombre: 'Ganador Grupo B', jugadores:[] as any};
@@ -507,7 +478,6 @@ export default function ActiveTournamentPage() {
         const placeholderDuplaW_SF2 = {id: 'placeholder-SF2W', nombre: 'Ganador SF2', jugadores:[] as any};
         const placeholderDuplaL_SF2 = {id: 'placeholder-SF2L', nombre: 'Perdedor SF2', jugadores:[] as any};
 
-
         const semiFinalMatches: PlayoffMatch[] = [
           { id: `${category.id}-SF1`, dupla1: placeholderDuplaW_G1, dupla2: placeholderDuplaRU_G2, status: 'pending', stage: 'semifinal', description: 'Ganador Grupo A vs Segundo Grupo B' },
           { id: `${category.id}-SF2`, dupla1: placeholderDuplaW_G2, dupla2: placeholderDuplaRU_G1, status: 'pending', stage: 'semifinal', description: 'Ganador Grupo B vs Segundo Grupo A' },
@@ -515,49 +485,52 @@ export default function ActiveTournamentPage() {
         const finalMatch: PlayoffMatch = { id: `${category.id}-F`, dupla1: placeholderDuplaW_SF1, dupla2: placeholderDuplaW_SF2, status: 'pending', stage: 'final', description: 'Final' };
         const thirdPlaceMatch: PlayoffMatch = { id: `${category.id}-TP`, dupla1: placeholderDuplaL_SF1, dupla2: placeholderDuplaL_SF2, status: 'pending', stage: 'tercer_puesto', description: 'Tercer Puesto'};
         
-        playoffMatchesForCategory = [...semiFinalMatches, finalMatch, thirdPlaceMatch];
+        const allPlayoffMatchesRaw = [...semiFinalMatches, finalMatch, thirdPlaceMatch];
+        playoffMatchesForCategory = [];
 
-        playoffMatchesForCategory.forEach(playoffMatch => {
+        allPlayoffMatchesRaw.forEach(playoffMatch => {
             let scheduled = false;
             let attempts = 0;
+            // Start playoff scheduling after all group matches, considering overall max time slot
             let timeSlotToTryForThisMatch = maxTimeSlotOverall + 1; 
 
-            while(!scheduled && attempts < 1000) { // Increased attempts for playoffs
+            while(!scheduled && attempts < 1000) {
+                // For placeholders, actual dupla rest isn't checked, but slot availability is.
+                // If real duplas were substituted, their rest should be checked.
                 if (!occupiedSlots[timeSlotToTryForThisMatch]) {
                     occupiedSlots[timeSlotToTryForThisMatch] = Array(numCourts).fill(null);
                 }
-                 
-                // Check if any dupla (even placeholder) is notionally "busy" if it were a real dupla already playing
-                // This is more conceptual for placeholders, but important if they become real duplas later.
-                let duplasInPlayoffMatchConceptuallyBusy = false;
+                
+                // Check if any "conceptual" dupla is busy (more for when they become real)
+                // For now, mainly checking if the court slot is free.
+                let duplasConceptuallyBusy = false; 
                 if (occupiedSlots[timeSlotToTryForThisMatch]) {
-                    for (let courtScanIdx = 0; courtScanIdx < numCourts; courtScanIdx++) {
+                    for(let courtScanIdx = 0; courtScanIdx < numCourts; courtScanIdx++){
                         const slotContent = occupiedSlots[timeSlotToTryForThisMatch][courtScanIdx];
-                        // This check is more relevant if playoff duplas were resolved from previous matches
-                        // For now, placeholders won't be in slotContent.duplaIds unless explicitly added.
-                        // The primary check is that the slot itself is free.
+                        // This check is more relevant if we knew the actual duplas for playoffs
+                        // For placeholders, this check is less effective.
                     }
                 }
-                // If duplasInPlayoffMatchConceptuallyBusy, we'd skip to next timeSlot.
-                // For now, this mostly means we are just looking for an empty court slot.
+                if (duplasConceptuallyBusy) {
+                     timeSlotToTryForThisMatch++;
+                     attempts++;
+                     continue;
+                }
+
 
                 for (let courtIdx = 0; courtIdx < numCourts; courtIdx++) {
                     if (!occupiedSlots[timeSlotToTryForThisMatch] || !occupiedSlots[timeSlotToTryForThisMatch][courtIdx]) {
-                        // Placeholder duplas don't have a "last played time" for rest check yet.
-                        // This assumes a natural break after group stages before playoffs start.
-                        // If playoffs were immediate, we'd need to pass actual duplas or check their last play time.
-
-                        if (!occupiedSlots[timeSlotToTryForThisMatch]) occupiedSlots[timeSlotToTryForThisMatch] = Array(numCourts).fill(null);
                         occupiedSlots[timeSlotToTryForThisMatch][courtIdx] = { 
                             matchId: playoffMatch.id, 
                             categoryId: category.id, 
-                            // For placeholders, IDs are like 'placeholder-G1W'. Real duplas would have their actual IDs.
-                            duplaIds: [playoffMatch.dupla1.id, playoffMatch.dupla2.id] 
+                            duplaIds: [playoffMatch.dupla1.id, playoffMatch.dupla2.id] // Placeholder IDs
                         };
                         playoffMatch.court = `Cancha ${courtIdx + 1}`;
                         playoffMatch.time = format(addMinutes(tournamentStartDate, timeSlotToTryForThisMatch * matchDuration), "HH:mm");
                         
-                        // For placeholders, we don't update lastPlayedTimeSlotByDupla until they are resolved to actual duplas.
+                        playoffMatchesForCategory!.push(playoffMatch); // Add to the final list for the category
+
+                        // Placeholder duplas don't update lastPlayedTimeSlotByDupla or rest status yet.
                         maxTimeSlotOverall = Math.max(maxTimeSlotOverall, timeSlotToTryForThisMatch);
                         scheduled = true;
                         break;
@@ -566,28 +539,37 @@ export default function ActiveTournamentPage() {
                 if (!scheduled) timeSlotToTryForThisMatch++;
                 attempts++;
             }
-             if (!scheduled) { 
-                console.warn(`Could not schedule playoff match ${playoffMatch.id} for category ${category.id} after ${attempts} attempts. Scheduling at earliest with fallback.`);
+            if (!scheduled) { 
+                console.warn(`Could not schedule playoff match ${playoffMatch.id}. Using fallback.`);
                 let fallbackSlot = maxTimeSlotOverall + 1;
-                let fallbackScheduled = false;
-                while(!fallbackScheduled) {
+                // Simplified fallback for playoffs: just find the next available slot.
+                while(true){
                     if (!occupiedSlots[fallbackSlot]) occupiedSlots[fallbackSlot] = Array(numCourts).fill(null);
+                    let courtFound = false;
                     for (let courtIdx = 0; courtIdx < numCourts; courtIdx++) {
-                        if(!occupiedSlots[fallbackSlot] || !occupiedSlots[fallbackSlot][courtIdx]) {
-                            if (!occupiedSlots[fallbackSlot]) occupiedSlots[fallbackSlot] = Array(numCourts).fill(null);
+                        if(!occupiedSlots[fallbackSlot][courtIdx]) {
                             occupiedSlots[fallbackSlot][courtIdx] = { matchId: playoffMatch.id, categoryId: category.id, duplaIds: [playoffMatch.dupla1.id, playoffMatch.dupla2.id]};
                             playoffMatch.court = `Cancha ${courtIdx + 1} (FB)`;
                             playoffMatch.time = format(addMinutes(tournamentStartDate, fallbackSlot * matchDuration), "HH:mm");
+                            playoffMatchesForCategory!.push(playoffMatch);
                             maxTimeSlotOverall = Math.max(maxTimeSlotOverall, fallbackSlot);
-                            fallbackScheduled = true;
+                            courtFound = true;
                             break;
                         }
                     }
-                    if (!fallbackScheduled) fallbackSlot++;
+                    if(courtFound) break;
+                    fallbackSlot++;
+                     if(fallbackSlot > maxTimeSlotOverall + 500) { // Safety break for playoff fallback
+                        console.error(`CRITICAL: Fallback failed for playoff match ${playoffMatch.id}`);
+                        // Add with TBD if truly stuck
+                        playoffMatchesForCategory!.push({...playoffMatch, court: "TBD (Error)", time: "TBD (Error)" });
+                        break;
+                    }
                 }
             }
         });
       }
+
 
       groups.forEach(group => {
         const uniqueMatchesInGroup: Match[] = [];
@@ -603,7 +585,7 @@ export default function ActiveTournamentPage() {
           }
         }
         group.matches = uniqueMatchesInGroup;
-        delete group.rawMatches; // Clean up temporary raw matches
+        delete group.rawMatches; 
       });
 
       newFixture[category.id] = {
@@ -612,7 +594,7 @@ export default function ActiveTournamentPage() {
         groups,
         playoffMatches: playoffMatchesForCategory
       };
-    });
+    }); // End of forEach category
 
     setFixture(newFixture);
     if (torneo) {
@@ -910,7 +892,6 @@ export default function ActiveTournamentPage() {
                                             <h4 className="text-lg font-semibold text-primary mb-2">Fase de Playoffs</h4>
                                             <ul className="space-y-2">
                                                 {catFixture.playoffMatches.sort((a,b) => {
-                                                    // Prioritize final, then third place, then semifinals by time/court
                                                     const stageOrder = (stage: PlayoffMatch['stage']) => {
                                                         if (stage === 'final') return 0;
                                                         if (stage === 'tercer_puesto') return 1;
