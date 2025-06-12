@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2 } from 'lucide-react';
+import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power } from 'lucide-react';
 import React, { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -13,6 +13,7 @@ import { es } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -45,7 +46,8 @@ interface TorneoActivoData {
   place: string;
   categoriesWithDuplas: CategoriaConDuplas[];
   numCourts?: number;
-  matchDuration?: number; 
+  matchDuration?: number;
+  isAmPmModeActive?: boolean; 
 }
 
 interface Standing {
@@ -130,6 +132,7 @@ export default function ActiveTournamentPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [numCourts, setNumCourts] = useState<number | undefined>(2);
   const [matchDuration, setMatchDuration] = useState<number | undefined>(60);
+  const [isAmPmModeActive, setIsAmPmModeActive] = useState<boolean>(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const { toast } = useToast();
 
@@ -147,7 +150,9 @@ export default function ActiveTournamentPage() {
                 !Array.isArray(duplaItem) ||
                 duplaItem.length !== 2 ||
                 !duplaItem[0] || 
-                !duplaItem[1] 
+                !duplaItem[1] ||
+                typeof duplaItem[0] !== 'object' || 
+                typeof duplaItem[1] !== 'object'
               ) {
                 console.warn('Skipping malformed duplaItem (not an array, not length 2, or missing player objects):', duplaItem);
                 return null;
@@ -185,6 +190,7 @@ export default function ActiveTournamentPage() {
           setTorneo({ ...parsedTorneo, categoriesWithDuplas: transformedCategories });
           setNumCourts(parsedTorneo.numCourts || 2);
           setMatchDuration(parsedTorneo.matchDuration || 60);
+          setIsAmPmModeActive(parsedTorneo.isAmPmModeActive || false);
 
           const storedFixture = sessionStorage.getItem(`fixture_${parsedTorneo.tournamentName}`);
           if (storedFixture) {
@@ -214,29 +220,45 @@ export default function ActiveTournamentPage() {
     loadTournamentData();
   }, [loadTournamentData]);
 
-  const handleTournamentSettingChange = (type: 'courts' | 'duration', value: string) => {
+  const handleTournamentSettingChange = (type: 'courts' | 'duration' | 'amPmMode', value: string | boolean) => {
     if (!torneo) return;
-    const numericValue = parseInt(value, 10);
-    let updatedTorneo = { ...torneo };
+    
+    let updatedTorneoData = { ...torneo };
+    let settingChanged = false;
 
-    if (type === 'courts') {
-      setNumCourts(numericValue);
-      updatedTorneo.numCourts = numericValue;
-    } else if (type === 'duration') {
-      setMatchDuration(numericValue);
-      updatedTorneo.matchDuration = numericValue;
+    if (type === 'courts' && typeof value === 'string') {
+      const numericValue = parseInt(value, 10);
+      if (numCourts !== numericValue) {
+        setNumCourts(numericValue);
+        updatedTorneoData.numCourts = numericValue;
+        settingChanged = true;
+      }
+    } else if (type === 'duration' && typeof value === 'string') {
+      const numericValue = parseInt(value, 10);
+       if (matchDuration !== numericValue) {
+        setMatchDuration(numericValue);
+        updatedTorneoData.matchDuration = numericValue;
+        settingChanged = true;
+      }
+    } else if (type === 'amPmMode' && typeof value === 'boolean') {
+       if (isAmPmModeActive !== value) {
+        setIsAmPmModeActive(value);
+        updatedTorneoData.isAmPmModeActive = value;
+        settingChanged = true;
+      }
     }
     
-    setTorneo(updatedTorneo);
-    sessionStorage.setItem('torneoActivo', JSON.stringify(updatedTorneo));
-    toast({ title: "Ajuste Guardado", description: `Se actualizó ${type === 'courts' ? 'el número de canchas' : 'la duración de partidos'}.` });
-    
-    if (fixture) { 
-        setFixture(null);
-        if (torneo) {
+    if (settingChanged) {
+        setTorneo(updatedTorneoData);
+        sessionStorage.setItem('torneoActivo', JSON.stringify(updatedTorneoData));
+        const settingName = type === 'courts' ? 'el número de canchas' : type === 'duration' ? 'la duración de partidos' : 'el modo de programación AM/PM';
+        toast({ title: "Ajuste Guardado", description: `Se actualizó ${settingName}.` });
+        
+        if (fixture) { 
+            setFixture(null);
             sessionStorage.removeItem(`fixture_${torneo.tournamentName}`);
+            toast({ title: "Fixture Invalidado", description: "Los ajustes del torneo cambiaron. Debes generar los partidos nuevamente.", variant: "default"});
         }
-        toast({ title: "Fixture Invalidado", description: "Los ajustes del torneo cambiaron. Debes generar los partidos nuevamente.", variant: "default"});
     }
   };
 
@@ -253,9 +275,9 @@ export default function ActiveTournamentPage() {
 
     const occupiedSlots: Array<Array<OccupiedSlotInfo | null>> = []; 
     const lastPlayedTimeSlotByDupla: Map<string, number> = new Map(); 
-    let maxTimeSlotOverall = -1; 
+    let currentOverallLatestTimeSlot = -1; 
 
-    torneo.categoriesWithDuplas.forEach(category => {
+    torneo.categoriesWithDuplas.forEach((category, categoryIndex) => {
       if (!category || category.duplas.length < 2) { 
         newFixture[category.id] = {
           categoryId: category.id,
@@ -330,10 +352,15 @@ export default function ActiveTournamentPage() {
         });
       }
       
+      let categorySpecificStartTimeSlot = 0;
+      if (torneo.isAmPmModeActive && categoryIndex > 0 && currentOverallLatestTimeSlot > -1) {
+          categorySpecificStartTimeSlot = currentOverallLatestTimeSlot + 1;
+      }
+
       allCategoryMatchesForScheduling.forEach(match => {
         let scheduled = false;
         let attempts = 0; 
-        let timeSlotToTryForThisMatch = maxTimeSlotOverall > -1 ? 0 : 0;
+        let timeSlotToTryForThisMatch = categorySpecificStartTimeSlot;
 
         while(!scheduled && attempts < 2000) { 
             if (!occupiedSlots[timeSlotToTryForThisMatch]) {
@@ -357,11 +384,9 @@ export default function ActiveTournamentPage() {
                 continue; 
             }
 
-            // Stricter rest check for group stage matches: Must skip one full time slot
             const d1LastPlay = lastPlayedTimeSlotByDupla.get(match.dupla1.id);
             const d2LastPlay = lastPlayedTimeSlotByDupla.get(match.dupla2.id);
             
-            // For group matches (match.stage is undefined), apply stricter rest
             let d1NeedsRestStrict = (d1LastPlay !== undefined && timeSlotToTryForThisMatch <= d1LastPlay + 1);
             let d2NeedsRestStrict = (d2LastPlay !== undefined && timeSlotToTryForThisMatch <= d2LastPlay + 1);
             
@@ -393,7 +418,7 @@ export default function ActiveTournamentPage() {
 
                     lastPlayedTimeSlotByDupla.set(match.dupla1.id, timeSlotToTryForThisMatch);
                     lastPlayedTimeSlotByDupla.set(match.dupla2.id, timeSlotToTryForThisMatch);
-                    maxTimeSlotOverall = Math.max(maxTimeSlotOverall, timeSlotToTryForThisMatch);
+                    currentOverallLatestTimeSlot = Math.max(currentOverallLatestTimeSlot, timeSlotToTryForThisMatch);
                     scheduled = true;
                     break; 
                 }
@@ -404,7 +429,7 @@ export default function ActiveTournamentPage() {
 
         if (!scheduled) {
             console.warn(`Could not schedule match ${match.id} for category ${category.id} using primary logic. Using fallback.`);
-            let fallbackSlot = maxTimeSlotOverall +1; 
+            let fallbackSlot = Math.max(currentOverallLatestTimeSlot +1, categorySpecificStartTimeSlot); 
             let fallbackScheduled = false;
             let fallbackAttempts = 0;
             while(!fallbackScheduled && fallbackAttempts < 500) {
@@ -439,7 +464,7 @@ export default function ActiveTournamentPage() {
                         
                         lastPlayedTimeSlotByDupla.set(match.dupla1.id, fallbackSlot); 
                         lastPlayedTimeSlotByDupla.set(match.dupla2.id, fallbackSlot);
-                        maxTimeSlotOverall = Math.max(maxTimeSlotOverall, fallbackSlot);
+                        currentOverallLatestTimeSlot = Math.max(currentOverallLatestTimeSlot, fallbackSlot);
                         fallbackScheduled = true;
                         break;
                     }
@@ -471,11 +496,17 @@ export default function ActiveTournamentPage() {
         
         const allPlayoffMatchesRaw = [...semiFinalMatches, finalMatch, thirdPlaceMatch];
         playoffMatchesForCategory = [];
+        
+        let playoffStartTimeSlot = currentOverallLatestTimeSlot > -1 ? currentOverallLatestTimeSlot + 1 : 0;
+         if (torneo.isAmPmModeActive && categoryIndex > 0 && currentOverallLatestTimeSlot > -1) {
+            playoffStartTimeSlot = currentOverallLatestTimeSlot + 1;
+        }
+
 
         allPlayoffMatchesRaw.forEach(playoffMatch => {
             let scheduled = false;
             let attempts = 0;
-            let timeSlotToTryForThisMatch = maxTimeSlotOverall + 1; 
+            let timeSlotToTryForThisMatch = playoffStartTimeSlot; 
 
             while(!scheduled && attempts < 1000) {
                 if (!occupiedSlots[timeSlotToTryForThisMatch]) {
@@ -487,17 +518,16 @@ export default function ActiveTournamentPage() {
                     for(let courtScanIdx = 0; courtScanIdx < numCourts; courtScanIdx++){
                         const slotContent = occupiedSlots[timeSlotToTryForThisMatch][courtScanIdx];
                         if (slotContent && (slotContent.duplaIds.includes(playoffMatch.dupla1.id) || slotContent.duplaIds.includes(playoffMatch.dupla2.id))) {
-                            duplasConceptuallyBusy = true; // This is more for when placeholders are replaced
+                            duplasConceptuallyBusy = true; 
                             break;
                         }
                     }
                 }
-                if (duplasConceptuallyBusy) { // Less critical for placeholders, but important for future
+                if (duplasConceptuallyBusy) { 
                      timeSlotToTryForThisMatch++;
                      attempts++;
                      continue;
                 }
-                // Playoff matches do NOT use the stricter "skip one slot" rest rule here
                 
                 for (let courtIdx = 0; courtIdx < numCourts; courtIdx++) {
                     if (!occupiedSlots[timeSlotToTryForThisMatch] || !occupiedSlots[timeSlotToTryForThisMatch][courtIdx]) {
@@ -511,10 +541,9 @@ export default function ActiveTournamentPage() {
                         
                         playoffMatchesForCategory!.push(playoffMatch); 
 
-                        // Even for placeholders, mark their conceptual last played time
                         lastPlayedTimeSlotByDupla.set(playoffMatch.dupla1.id, timeSlotToTryForThisMatch);
                         lastPlayedTimeSlotByDupla.set(playoffMatch.dupla2.id, timeSlotToTryForThisMatch);
-                        maxTimeSlotOverall = Math.max(maxTimeSlotOverall, timeSlotToTryForThisMatch);
+                        currentOverallLatestTimeSlot = Math.max(currentOverallLatestTimeSlot, timeSlotToTryForThisMatch);
                         scheduled = true;
                         break;
                     }
@@ -524,21 +553,21 @@ export default function ActiveTournamentPage() {
             }
             if (!scheduled) { 
                 console.warn(`Could not schedule playoff match ${playoffMatch.id}. Using fallback.`);
-                let fallbackSlot = maxTimeSlotOverall + 1;
+                let fallbackSlot = Math.max(currentOverallLatestTimeSlot + 1, playoffStartTimeSlot);
                 let fallbackScheduled = false;
                 let fbAttempts = 0;
                 while(!fallbackScheduled && fbAttempts < 500) {
                     if (!occupiedSlots[fallbackSlot]) occupiedSlots[fallbackSlot] = Array(numCourts).fill(null);
                     let courtFound = false;
                     for (let courtIdx = 0; courtIdx < numCourts; courtIdx++) {
-                        if(!occupiedSlots[fallbackSlot][courtIdx]) {
+                        if(!occupiedSlots[fallbackSlot] || !occupiedSlots[fallbackSlot][courtIdx]) { // Ensure slot exists and is empty
                             occupiedSlots[fallbackSlot][courtIdx] = { matchId: playoffMatch.id, categoryId: category.id, duplaIds: [playoffMatch.dupla1.id, playoffMatch.dupla2.id]};
                             playoffMatch.court = `Cancha ${courtIdx + 1} (FB)`;
                             playoffMatch.time = format(addMinutes(tournamentStartDate, fallbackSlot * matchDuration), "HH:mm");
                             playoffMatchesForCategory!.push(playoffMatch);
                             lastPlayedTimeSlotByDupla.set(playoffMatch.dupla1.id, fallbackSlot);
                             lastPlayedTimeSlotByDupla.set(playoffMatch.dupla2.id, fallbackSlot);
-                            maxTimeSlotOverall = Math.max(maxTimeSlotOverall, fallbackSlot);
+                            currentOverallLatestTimeSlot = Math.max(currentOverallLatestTimeSlot, fallbackSlot);
                             courtFound = true;
                             fallbackScheduled = true;
                             break;
@@ -714,6 +743,18 @@ export default function ActiveTournamentPage() {
                 <SelectItem value="90">90 minutos</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="flex items-center space-x-2 col-span-1 sm:col-span-2 pt-2">
+            <Switch
+              id="am-pm-mode"
+              checked={isAmPmModeActive}
+              onCheckedChange={(checked) => handleTournamentSettingChange('amPmMode', checked)}
+              disabled={!!fixture}
+            />
+            <Label htmlFor="am-pm-mode" className="flex items-center">
+              <Power className="mr-2 h-4 w-4 text-muted-foreground" />
+              Programación por Bloques (AM/PM)
+            </Label>
           </div>
         </CardContent>
         <CardFooter className="flex justify-between items-center pt-4">
@@ -930,4 +971,3 @@ export default function ActiveTournamentPage() {
   );
 }
     
-
