@@ -484,7 +484,6 @@ export default function ActiveTournamentPage() {
           categorySpecificStartTimeSlot = currentOverallLatestTimeSlot + 1;
       }
 
-      // --- Conditional Scheduling Logic ---
       if (groups.length > 0 && numCourts > 0 && groups.length === numCourts) {
           toast({ title: "Modo Cancha Dedicada", description: `Categoría ${category.type} - ${category.level} usando cancha dedicada por grupo.`});
           groups.forEach((group, groupIndex) => {
@@ -523,11 +522,13 @@ export default function ActiveTournamentPage() {
                       
                       const d1LastPlay = lastPlayedTimeSlotByDupla.get(matchToSchedule.dupla1.id);
                       const d2LastPlay = lastPlayedTimeSlotByDupla.get(matchToSchedule.dupla2.id);
-                      const d1NeedsRest = (d1LastPlay !== undefined && currentGroupTimeSlot === d1LastPlay + 1);
-                      const d2NeedsRest = (d2LastPlay !== undefined && currentGroupTimeSlot === d2LastPlay + 1);
-                      const canOverrideRest = attempts > MAX_ATTEMPTS_DEDICATED * 0.9;
+                      const d1NeedsRestStrict = (d1LastPlay !== undefined && currentGroupTimeSlot <= d1LastPlay + 1);
+                      const d2NeedsRestStrict = (d2LastPlay !== undefined && currentGroupTimeSlot <= d2LastPlay + 1);
+                      
+                      let canOverrideRest = attempts > MAX_ATTEMPTS_DEDICATED * 0.95;
 
-                      if ((d1NeedsRest || d2NeedsRest) && !canOverrideRest) {
+
+                      if ((d1NeedsRestStrict || d2NeedsRestStrict) && !canOverrideRest) {
                           currentGroupTimeSlot++;
                           attempts++;
                           continue;
@@ -549,7 +550,9 @@ export default function ActiveTournamentPage() {
                       currentOverallLatestTimeSlot = Math.max(currentOverallLatestTimeSlot, currentGroupTimeSlot);
                       
                       scheduled = true;
-                      currentGroupTimeSlot++; // For next match in THIS group on THIS court
+                      // No incrementar currentGroupTimeSlot aquí para el siguiente partido del MISMO grupo,
+                      // se incrementará al inicio del siguiente while loop si es necesario.
+                      // Pero sí se debe avanzar el slot para el *próximo partido de este grupo*.
                   }
                   if (!scheduled) {
                       console.warn(`DEDICATED MODE: Could not schedule match ${matchToSchedule.id} for group ${group.name}. Added as TBD.`);
@@ -559,16 +562,28 @@ export default function ActiveTournamentPage() {
                           time: "TBD (Err.)"
                       });
                   }
+                  currentGroupTimeSlot++; // Avanza para el siguiente partido de ESTE grupo en ESTA cancha dedicada.
               });
           });
-      } else { // General Slot-First Scheduling Logic
+      } else { 
           let unscheduledMatchesCurrentCategory: Match[] = [];
           groups.forEach(group => {
-              if (group.rawMatches) unscheduledMatchesCurrentCategory.push(...group.rawMatches);
+              if (group.rawMatches) {
+                unscheduledMatchesCurrentCategory.push(...group.rawMatches);
+              }
+          });
+          
+          unscheduledMatchesCurrentCategory.sort((a, b) => {
+            const aRound = parseInt(a.id.substring(a.id.lastIndexOf('-M') + 2));
+            const bRound = parseInt(b.id.substring(b.id.lastIndexOf('-M') + 2));
+            if (aRound !== bRound) {
+              return aRound - bRound;
+            }
+            return (a.groupOriginId || "").localeCompare(b.groupOriginId || "");
           });
           
           let categoryTimeSlotCursor = categorySpecificStartTimeSlot;
-          const MAX_ITERATIONS_PER_CATEGORY = unscheduledMatchesCurrentCategory.length * numCourts * 10; 
+          const MAX_ITERATIONS_PER_CATEGORY = unscheduledMatchesCurrentCategory.length * numCourts * 20; 
           let iterations = 0;
 
           while (unscheduledMatchesCurrentCategory.length > 0 && iterations < MAX_ITERATIONS_PER_CATEGORY) {
@@ -590,7 +605,7 @@ export default function ActiveTournamentPage() {
                 let duplasBusyThisSlotGlobally = false;
                 if (occupiedSlots[categoryTimeSlotCursor]) {
                   for (let cScan = 0; cScan < numCourts; cScan++) {
-                    if (cScan === courtIdx) continue; // Don't check against the current court being evaluated
+                    if (cScan === courtIdx) continue; 
                     const slotInfo = occupiedSlots[categoryTimeSlotCursor][cScan];
                     if (slotInfo && (slotInfo.duplaIds.includes(d1.id) || slotInfo.duplaIds.includes(d2.id))) {
                       duplasBusyThisSlotGlobally = true;
@@ -603,9 +618,10 @@ export default function ActiveTournamentPage() {
                 const d1LastPlay = lastPlayedTimeSlotByDupla.get(d1.id);
                 const d2LastPlay = lastPlayedTimeSlotByDupla.get(d2.id);
                 
-                const d1NeedsRestStrict = (d1LastPlay !== undefined && categoryTimeSlotCursor === d1LastPlay + 1);
-                const d2NeedsRestStrict = (d2LastPlay !== undefined && categoryTimeSlotCursor === d2LastPlay + 1);
-                let canOverrideRest = (unscheduledMatchesCurrentCategory.length <= numCourts && iterations > MAX_ITERATIONS_PER_CATEGORY * 0.95) || iterations > MAX_ITERATIONS_PER_CATEGORY * 0.98 ;
+                const d1NeedsRestStrict = (d1LastPlay !== undefined && categoryTimeSlotCursor <= d1LastPlay + 1);
+                const d2NeedsRestStrict = (d2LastPlay !== undefined && categoryTimeSlotCursor <= d2LastPlay + 1);
+                
+                let canOverrideRest = iterations > MAX_ITERATIONS_PER_CATEGORY * 0.98;
 
 
                 if ((d1NeedsRestStrict || d2NeedsRestStrict) && !canOverrideRest) {
@@ -643,8 +659,6 @@ export default function ActiveTournamentPage() {
               }
             }
             if (matchesScheduledInThisTimeSlotLoop === 0 && unscheduledMatchesCurrentCategory.length > 0) {
-              // No matches could be scheduled in this timeslot (e.g. all remaining duplas need rest)
-              // or all courts are busy with other categories (if AM/PM off).
             }
             categoryTimeSlotCursor++; 
             iterations++;
@@ -663,7 +677,7 @@ export default function ActiveTournamentPage() {
                     }
                });
           }
-      } // End of conditional scheduling logic
+      } 
 
 
       let playoffMatchesForCategory: PlayoffMatch[] | undefined = undefined;
@@ -691,8 +705,8 @@ export default function ActiveTournamentPage() {
          if (torneo.isAmPmModeActive && categoryIndex > 0 && currentOverallLatestTimeSlot > -1) { 
             playoffStartTimeSlot = currentOverallLatestTimeSlot + 1;
         }
-        if (categorySpecificStartTimeSlot > playoffStartTimeSlot) { //Ensure playoffs start after all group games of *this* category.
-            playoffStartTimeSlot = Math.max(playoffStartTimeSlot, categoryTimeSlotCursor); // categoryTimeSlotCursor might be more up-to-date after general scheduling
+        if (categorySpecificStartTimeSlot > playoffStartTimeSlot && groups.length > 0) { 
+            playoffStartTimeSlot = Math.max(playoffStartTimeSlot, categoryTimeSlotCursor); 
         }
 
 
@@ -711,13 +725,9 @@ export default function ActiveTournamentPage() {
                     for(let courtScanIdx = 0; courtScanIdx < numCourts; courtScanIdx++){
                         const slotContent = occupiedSlots[timeSlotToTryForThisMatch][courtScanIdx];
                         if (slotContent && (slotContent.duplaIds.includes(playoffMatch.dupla1.id) || slotContent.duplaIds.includes(playoffMatch.dupla2.id))) {
-                            // For placeholders, this check isn't very effective but important if actual duplas are known.
-                            // This is more about finding an empty court slot.
-                            // The real check for playoff dupla availability will happen when results come in.
                         }
                     }
                 }
-                // For playoffs, we are primarily finding an empty slot. Dupla rest/availability is less strict or TBD.
                 
                 for (let courtIdx = 0; courtIdx < numCourts; courtIdx++) {
                     if (!occupiedSlots[timeSlotToTryForThisMatch] || !occupiedSlots[timeSlotToTryForThisMatch][courtIdx]) {
@@ -731,10 +741,9 @@ export default function ActiveTournamentPage() {
                         
                         playoffMatchesForCategory!.push(playoffMatch); 
 
-                        // We don't update lastPlayedTimeSlotByDupla for placeholder duplas.
                         currentOverallLatestTimeSlot = Math.max(currentOverallLatestTimeSlot, timeSlotToTryForThisMatch);
                         scheduled = true;
-                        playoffStartTimeSlot = timeSlotToTryForThisMatch + 1; // Next playoff match should try starting from the next slot.
+                        playoffStartTimeSlot = timeSlotToTryForThisMatch + 1; 
                         break;
                     }
                 }
@@ -1292,4 +1301,6 @@ export default function ActiveTournamentPage() {
     
 
       
+
+
 
