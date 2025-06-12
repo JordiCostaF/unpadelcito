@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power } from 'lucide-react';
+import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power, Save } from 'lucide-react';
 import React, { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -26,6 +26,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { useForm, type UseFormReturn, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+
 
 interface Dupla {
   id: string;
@@ -106,6 +121,16 @@ interface OccupiedSlotInfo {
   duplaIds: string[]; 
 }
 
+const resultFormSchema = z.object({
+  score1: z.string().min(1, "Puntaje requerido").regex(/^\d+$/, "Debe ser un número"),
+  score2: z.string().min(1, "Puntaje requerido").regex(/^\d+$/, "Debe ser un número"),
+}).refine(data => parseInt(data.score1, 10) !== parseInt(data.score2, 10), {
+  message: "Los puntajes no pueden ser iguales",
+  path: ["score1"], // You can also use ["score2"] or a general path
+});
+
+type ResultFormValues = z.infer<typeof resultFormSchema>;
+
 
 const generateDuplaId = (d: [PlayerFormValues, PlayerFormValues]): string => {
   const p1 = d?.[0];
@@ -125,6 +150,102 @@ const generateDuplaId = (d: [PlayerFormValues, PlayerFormValues]): string => {
   return [p1Identifier, p2Identifier].sort().join('-');
 };
 
+interface ResultDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  match: (Match | PlayoffMatch | null) & { categoryId?: string; groupOriginId?: string }; // Extended match type
+  onSubmit: (data: ResultFormValues) => void;
+  form: UseFormReturn<ResultFormValues>;
+}
+
+function ResultDialog({ isOpen, onClose, match, onSubmit, form }: ResultDialogProps) {
+  useEffect(() => {
+    if (isOpen && match) {
+      if (match.score1 !== undefined && match.score2 !== undefined) {
+        form.reset({
+          score1: match.score1.toString(),
+          score2: match.score2.toString(),
+        });
+      } else {
+        form.reset({ score1: "", score2: "" });
+      }
+    } else if (!isOpen) {
+        form.reset({ score1: "", score2: "" }); // Clear form when dialog is not open
+    }
+  }, [isOpen, match, form]);
+
+  if (!isOpen) {
+    return null;
+  }
+  
+  if (!match || !match.dupla1 || !match.dupla2 ) {
+     return (
+      <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Error</DialogTitle>
+            <DialogDescription>Datos del partido no disponibles o incompletos para mostrar el diálogo de resultado.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={onClose} variant="outline">Cerrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  const { dupla1, dupla2 } = match;
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sm:max-w-[425px]">
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)}>
+            <DialogHeader>
+              <DialogTitle>Registrar Resultado: {dupla1.nombre} vs {dupla2.nombre}</DialogTitle>
+              <DialogDescription>
+                Ingresa los games ganados por cada dupla. El resultado no puede ser empate.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <FormField
+                control={form.control}
+                name="score1"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel htmlFor="score1">{dupla1.nombre}</FormLabel>
+                    <FormControl>
+                      <Input id="score1" type="number" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="score2"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel htmlFor="score2">{dupla2.nombre}</FormLabel>
+                    <FormControl>
+                      <Input id="score2" type="number" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
+              <Button type="submit"><Save className="mr-2 h-4 w-4" />Guardar Resultado</Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 
 export default function ActiveTournamentPage() {
   const [torneo, setTorneo] = useState<TorneoActivoData | null>(null);
@@ -135,6 +256,18 @@ export default function ActiveTournamentPage() {
   const [isAmPmModeActive, setIsAmPmModeActive] = useState<boolean>(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const { toast } = useToast();
+  
+  const [isResultModalOpen, setIsResultModalOpen] = useState(false);
+  const [currentEditingMatch, setCurrentEditingMatch] = useState<(Match | PlayoffMatch | null) & { categoryId?: string; groupOriginId?: string }>(null);
+
+  const resultForm = useForm<ResultFormValues>({
+    resolver: zodResolver(resultFormSchema),
+    defaultValues: {
+      score1: "",
+      score2: "",
+    },
+  });
+
 
   const loadTournamentData = useCallback(() => {
     setIsLoading(true);
@@ -309,10 +442,10 @@ export default function ActiveTournamentPage() {
         while(duplasToAssign > 0) {
             let currentGroupSize = Math.min(duplasToAssign, idealGroupSize);
             if (duplasToAssign - currentGroupSize > 0 && duplasToAssign - currentGroupSize < 3) {
-                 if (groups.length > 0 && duplasToAssign < idealGroupSize && duplasToAssign < 3) { 
-                    const groupDuplas = categoryDuplas.splice(0, duplasToAssign);
-                     groups.push({ id: `${category.id}-G${groupLetter}`, name: `Grupo ${groupLetter}`, duplas: groupDuplas, standings: groupDuplas.map(d => ({ duplaId: d.id, duplaName: d.nombre, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0, pts: 0 })), matches: [], rawMatches: [] });
-                     duplasToAssign = 0; 
+                 if (groups.length > 0 && duplasToAssign < idealGroupSize && duplasToAssign < 3 && groups[groups.length-1].duplas.length + duplasToAssign <=5 ) { 
+                     groups[groups.length-1].duplas.push(...categoryDuplas.splice(0, duplasToAssign));
+                     groups[groups.length-1].standings.push(...categoryDuplas.map(d => ({ duplaId: d.id, duplaName: d.nombre, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0, pts: 0 })));
+                     duplasToAssign = 0;
                  } else { 
                     currentGroupSize = Math.max(3, Math.min(duplasToAssign, currentGroupSize)); 
                     const groupDuplas = categoryDuplas.splice(0, currentGroupSize);
@@ -623,10 +756,117 @@ export default function ActiveTournamentPage() {
     if (torneo) {
       sessionStorage.removeItem(`fixture_${torneo.tournamentName}`);
       sessionStorage.removeItem('torneoActivo');
-      loadTournamentData(); 
+      setFixture(null); // Clear fixture from state
+      setTorneo(null);   // Clear torneo from state
+      // loadTournamentData(); // This will set torneo to null if not found, which is what we want
       toast({ title: "Torneo Borrado", description: "El torneo activo ha sido eliminado." });
     }
     setIsDeleteDialogOpen(false);
+  };
+  
+  const handleSaveResult = (data: ResultFormValues) => {
+    if (!currentEditingMatch || !fixture || !torneo) return;
+
+    const score1 = parseInt(data.score1, 10);
+    const score2 = parseInt(data.score2, 10);
+
+    const newFixture = JSON.parse(JSON.stringify(fixture)) as FixtureData; // Deep clone
+    let matchFound = false;
+
+    const categoryFixture = newFixture[currentEditingMatch.categoryId!];
+    if (!categoryFixture) return;
+
+    // Find and update in group matches
+    if (currentEditingMatch.groupOriginId) {
+        const group = categoryFixture.groups.find(g => g.id === currentEditingMatch.groupOriginId);
+        if (group) {
+            const matchIndex = group.matches.findIndex(m => m.id === currentEditingMatch.id);
+            if (matchIndex !== -1) {
+                const matchToUpdate = group.matches[matchIndex];
+                
+                const oldScore1 = matchToUpdate.score1;
+                const oldScore2 = matchToUpdate.score2;
+                const wasPending = matchToUpdate.status === 'pending';
+
+                matchToUpdate.score1 = score1;
+                matchToUpdate.score2 = score2;
+                matchToUpdate.status = 'completed';
+                matchToUpdate.winnerId = score1 > score2 ? matchToUpdate.dupla1.id : matchToUpdate.dupla2.id;
+                matchFound = true;
+
+                // Update standings
+                const standing1 = group.standings.find(s => s.duplaId === matchToUpdate.dupla1.id);
+                const standing2 = group.standings.find(s => s.duplaId === matchToUpdate.dupla2.id);
+
+                if (standing1 && standing2) {
+                    // Reverse old scores if match was not pending (i.e., editing a result)
+                    if (!wasPending && oldScore1 !== undefined && oldScore2 !== undefined) {
+                        standing1.pf -= oldScore1;
+                        standing1.pc -= oldScore2;
+                        standing2.pf -= oldScore2;
+                        standing2.pc -= oldScore1;
+
+                        if (oldScore1 > oldScore2) { // Dupla 1 was old winner
+                            standing1.pg -= 1;
+                            standing1.pts -= 2;
+                            standing2.pp -= 1;
+                        } else if (oldScore2 > oldScore1) { // Dupla 2 was old winner
+                            standing2.pg -= 1;
+                            standing2.pts -= 2;
+                            standing1.pp -= 1;
+                        }
+                        // If it was a draw and we didn't assign points, no change to PG/PP/Pts from old scores
+                    } else if (wasPending) { // Only increment PJ if it was pending
+                         standing1.pj += 1;
+                         standing2.pj += 1;
+                    }
+
+
+                    // Add new scores
+                    standing1.pf += score1;
+                    standing1.pc += score2;
+                    standing2.pf += score2;
+                    standing2.pc += score1;
+
+                    if (score1 > score2) { // Dupla 1 is new winner
+                        standing1.pg += 1;
+                        standing1.pts += 2;
+                        standing2.pp += 1;
+                    } else { // Dupla 2 is new winner
+                        standing2.pg += 1;
+                        standing2.pts += 2;
+                        standing1.pp += 1;
+                    }
+                }
+            }
+        }
+    } 
+    // Find and update in playoff matches
+    else if (categoryFixture.playoffMatches) {
+        const matchIndex = categoryFixture.playoffMatches.findIndex(m => m.id === currentEditingMatch.id);
+        if (matchIndex !== -1) {
+            const matchToUpdate = categoryFixture.playoffMatches[matchIndex];
+            matchToUpdate.score1 = score1;
+            matchToUpdate.score2 = score2;
+            matchToUpdate.status = 'completed';
+            matchToUpdate.winnerId = score1 > score2 ? matchToUpdate.dupla1.id : matchToUpdate.dupla2.id;
+            matchFound = true;
+            // Note: Playoff advancement logic based on winnerId is not yet implemented here
+        }
+    }
+
+
+    if (matchFound) {
+        setFixture(newFixture);
+        sessionStorage.setItem(`fixture_${torneo.tournamentName}`, JSON.stringify(newFixture));
+        toast({ title: "Resultado Guardado", description: `El resultado para ${currentEditingMatch.dupla1.nombre} vs ${currentEditingMatch.dupla2.nombre} ha sido actualizado.` });
+    } else {
+        toast({ title: "Error", description: "No se pudo encontrar el partido para actualizar.", variant: "destructive" });
+    }
+
+    setIsResultModalOpen(false);
+    setCurrentEditingMatch(null);
+    resultForm.reset();
   };
 
 
@@ -905,9 +1145,17 @@ export default function ActiveTournamentPage() {
                                                             </div>
                                                             <div className="text-xs text-muted-foreground mt-1 sm:mt-0 sm:ml-2">
                                                                 ({match.court || 'Cancha TBD'}, {match.time || 'Hora TBD'})
+                                                                {match.status === 'completed' && ` - ${match.score1} : ${match.score2}`}
                                                             </div>
                                                         </div>
-                                                         <Button variant="outline" size="sm" className="mt-2 sm:mt-0 sm:ml-3 text-xs h-6 float-right" onClick={() => toast({title:"Próximamente", description:"Registrar resultado del partido."})}><Edit3 className="mr-1 h-3 w-3"/>Resultado</Button>
+                                                         <Button variant="outline" size="sm" className="mt-2 sm:mt-0 sm:ml-3 text-xs h-6 float-right" 
+                                                            onClick={() => {
+                                                                setCurrentEditingMatch({ ...match, categoryId: catFixture.categoryId, groupOriginId: match.groupOriginId || group.id });
+                                                                setIsResultModalOpen(true);
+                                                            }}
+                                                          >
+                                                            <Edit3 className="mr-1 h-3 w-3"/>{match.status === 'completed' ? 'Editar' : 'Resultado'}
+                                                          </Button>
                                                     </li>
                                                 ))}
                                             </ul>
@@ -940,9 +1188,17 @@ export default function ActiveTournamentPage() {
                                                             </div>
                                                              <div className="text-xs text-muted-foreground mt-1 sm:mt-0 sm:ml-2">
                                                                 ({match.court || 'Cancha TBD'}, {match.time || 'Hora TBD'})
+                                                                {match.status === 'completed' && ` - ${match.score1} : ${match.score2}`}
                                                             </div>
                                                         </div>
-                                                         <Button variant="outline" size="sm" className="mt-2 sm:mt-0 sm:ml-3 text-xs h-6 float-right" onClick={() => toast({title:"Próximamente", description:"Registrar resultado del partido."})}><Edit3 className="mr-1 h-3 w-3"/>Resultado</Button>
+                                                         <Button variant="outline" size="sm" className="mt-2 sm:mt-0 sm:ml-3 text-xs h-6 float-right" 
+                                                            onClick={() => {
+                                                                setCurrentEditingMatch({ ...match, categoryId: catFixture.categoryId });
+                                                                setIsResultModalOpen(true);
+                                                            }}
+                                                          >
+                                                            <Edit3 className="mr-1 h-3 w-3"/>{match.status === 'completed' ? 'Editar' : 'Resultado'}
+                                                          </Button>
                                                     </li>
                                                 ))}
                                             </ul>
@@ -967,7 +1223,21 @@ export default function ActiveTournamentPage() {
           <Button variant="default" size="lg" className="text-base w-full sm:w-auto"><Home className="mr-2 h-5 w-5" />Volver al Inicio</Button>
         </Link>
       </div>
+
+      <ResultDialog
+        isOpen={isResultModalOpen}
+        onClose={() => {
+          setIsResultModalOpen(false);
+          setCurrentEditingMatch(null);
+          resultForm.reset(); 
+        }}
+        match={currentEditingMatch}
+        onSubmit={handleSaveResult}
+        form={resultForm}
+      />
     </div>
   );
 }
     
+
+      
