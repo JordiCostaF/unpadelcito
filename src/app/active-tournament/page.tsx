@@ -246,6 +246,79 @@ function ResultDialog({ isOpen, onClose, match, onSubmit, form }: ResultDialogPr
   );
 }
 
+function generateAndOrderGroupMatches(duplasInGroup: Dupla[], groupId: string): Match[] {
+  const allPossibleMatchTuples: [Dupla, Dupla][] = [];
+  for (let i = 0; i < duplasInGroup.length; i++) {
+    for (let j = i + 1; j < duplasInGroup.length; j++) {
+      allPossibleMatchTuples.push([duplasInGroup[i], duplasInGroup[j]]);
+    }
+  }
+
+  if (allPossibleMatchTuples.length === 0) {
+    return [];
+  }
+
+  const scheduledOrderTuples: [Dupla, Dupla][] = [];
+  const remainingMatchTuples = [...allPossibleMatchTuples];
+
+  // Add the first match
+  if (remainingMatchTuples.length > 0) {
+    scheduledOrderTuples.push(remainingMatchTuples.shift()!);
+  }
+  
+
+  while (remainingMatchTuples.length > 0) {
+    let foundNextMatch = false;
+    if (scheduledOrderTuples.length === 0 && remainingMatchTuples.length > 0) { 
+        scheduledOrderTuples.push(remainingMatchTuples.shift()!);
+        continue;
+    }
+    if(scheduledOrderTuples.length === 0) break;
+
+
+    const lastMatchTuple = scheduledOrderTuples[scheduledOrderTuples.length - 1];
+    const lastDupla1Id = lastMatchTuple[0].id;
+    const lastDupla2Id = lastMatchTuple[1].id;
+
+    for (let i = 0; i < remainingMatchTuples.length; i++) {
+      const currentCandidateTuple = remainingMatchTuples[i];
+      if (
+        currentCandidateTuple[0].id !== lastDupla1Id &&
+        currentCandidateTuple[0].id !== lastDupla2Id &&
+        currentCandidateTuple[1].id !== lastDupla1Id &&
+        currentCandidateTuple[1].id !== lastDupla2Id
+      ) {
+        scheduledOrderTuples.push(remainingMatchTuples.splice(i, 1)[0]);
+        foundNextMatch = true;
+        break;
+      }
+    }
+
+    if (!foundNextMatch) {
+      // Fallback: if no match can avoid repeating duplas, take the first available.
+      if (remainingMatchTuples.length > 0) {
+        scheduledOrderTuples.push(remainingMatchTuples.shift()!);
+      } else {
+        break; 
+      }
+    }
+  }
+
+  return scheduledOrderTuples.map((tuple, index) => ({
+    id: `${groupId}-M${index + 1}`,
+    dupla1: tuple[0],
+    dupla2: tuple[1],
+    status: 'pending',
+    groupOriginId: groupId,
+    court: undefined,
+    time: undefined,
+    score1: undefined,
+    score2: undefined,
+    winnerId: undefined,
+    round: undefined, 
+  }));
+}
+
 
 export default function ActiveTournamentPage() {
   const [torneo, setTorneo] = useState<TorneoActivoData | null>(null);
@@ -463,21 +536,7 @@ export default function ActiveTournamentPage() {
       }
       
       groups.forEach(group => {
-        group.rawMatches = []; 
-        let matchCounterInGroup = 0;
-        for (let i = 0; i < group.duplas.length; i++) {
-          for (let j = i + 1; j < group.duplas.length; j++) {
-            const matchId = `${group.id}-M${matchCounterInGroup + 1}`;
-            group.rawMatches.push({ 
-              id: matchId, 
-              dupla1: group.duplas[i], 
-              dupla2: group.duplas[j], 
-              status: 'pending', 
-              groupOriginId: group.id 
-            });
-            matchCounterInGroup++;
-          }
-        }
+        group.rawMatches = generateAndOrderGroupMatches(group.duplas, group.id);
       });
       
       let categorySpecificStartTimeSlot = 0;
@@ -485,14 +544,13 @@ export default function ActiveTournamentPage() {
           categorySpecificStartTimeSlot = currentOverallLatestTimeSlot + 1;
       }
 
-      // Modo de Cancha Dedicada por Grupo
       if (groups.length > 0 && numCourts > 0 && groups.length === numCourts) {
           toast({ title: "Modo Cancha Dedicada", description: `Categoría ${category.type} - ${category.level} usando cancha dedicada por grupo.`});
           groups.forEach((group, groupIndex) => {
               const dedicatedCourtIdx = groupIndex;
               let currentGroupTimeSlot = categorySpecificStartTimeSlot;
               let unscheduledMatchesThisGroup = [...(group.rawMatches || [])];
-              const MAX_ATTEMPTS_DEDICATED_MATCH = 100; 
+              const MAX_ATTEMPTS_DEDICATED_MATCH = 1000; 
 
               while(unscheduledMatchesThisGroup.length > 0) {
                 let matchScheduledThisGroupTimeSlot = false;
@@ -567,8 +625,8 @@ export default function ActiveTournamentPage() {
                 if (!matchScheduledThisGroupTimeSlot && unscheduledMatchesThisGroup.length > 0) {
                      currentGroupTimeSlot++; 
                 }
-                if (currentGroupTimeSlot > categorySpecificStartTimeSlot + 500) { 
-                    console.warn(`DEDICATED MODE: Group ${group.name} might be stuck. ${unscheduledMatchesThisGroup.length} matches left.`);
+                if (currentGroupTimeSlot > categorySpecificStartTimeSlot + (unscheduledMatchesThisGroup.length * 50) ) { // Adjusted limit
+                    console.warn(`DEDICATED MODE: Group ${group.name} might be stuck. ${unscheduledMatchesThisGroup.length} matches left. Attempts: ${currentGroupTimeSlot - categorySpecificStartTimeSlot}`);
                     unscheduledMatchesThisGroup.forEach(unscheduledMatch => {
                         group.matches.push({ ...unscheduledMatch, court: `Cancha ${dedicatedCourtIdx + 1} (Err.Ded.)`, time: "TBD (Err.Ded.)"});
                     });
@@ -577,17 +635,20 @@ export default function ActiveTournamentPage() {
                 }
               }
           });
-      } else { // Modo General de Programación (Slot-First)
-          let unscheduledMatchesCurrentCategory: Match[] = [];
-          groups.forEach(group => {
-              if (group.rawMatches) {
-                unscheduledMatchesCurrentCategory.push(...group.rawMatches);
-              }
-          });
+      } else { 
+          let allCategoryMatchesForScheduling: Match[] = [];
+          const maxMatchesInAnyGroup = Math.max(0, ...groups.map(g => g.rawMatches?.length || 0));
+          for (let roundIdx = 0; roundIdx < maxMatchesInAnyGroup; roundIdx++) {
+              groups.forEach(group => {
+                  if (group.rawMatches && group.rawMatches[roundIdx]) {
+                      allCategoryMatchesForScheduling.push(group.rawMatches[roundIdx]);
+                  }
+              });
+          }
+          let unscheduledMatchesCurrentCategory = [...allCategoryMatchesForScheduling];
           
           let categoryTimeSlotCursor = categorySpecificStartTimeSlot;
-          const unscheduledMatchesAtCategoryStart = unscheduledMatchesCurrentCategory.length;
-          const MAX_ITERATIONS_PER_CATEGORY = unscheduledMatchesAtCategoryStart * numCourts * 20; 
+          const MAX_ITERATIONS_PER_CATEGORY = (unscheduledMatchesCurrentCategory.length * numCourts * 20) + 500; 
           let iterations = 0;
 
           while (unscheduledMatchesCurrentCategory.length > 0 && iterations < MAX_ITERATIONS_PER_CATEGORY) {
@@ -694,7 +755,7 @@ export default function ActiveTournamentPage() {
 
 
       let playoffMatchesForCategory: PlayoffMatch[] | undefined = undefined;
-      if (groups.length === 2 && groups.every(g => g.duplas.length >=2)) { 
+      if (groups.length === 2 && groups.every(g => g.duplas.length >=2) && groups[0].duplas.length >=2 && groups[1].duplas.length >=2 ) { 
         const placeholderDuplaW_G1 = {id: 'placeholder-G1W', nombre: 'Ganador Grupo A', jugadores:[] as any};
         const placeholderDuplaRU_G1 = {id: 'placeholder-G1RU', nombre: 'Segundo Grupo A', jugadores:[] as any};
         const placeholderDuplaW_G2 = {id: 'placeholder-G2W', nombre: 'Ganador Grupo B', jugadores:[] as any};
@@ -746,6 +807,21 @@ export default function ActiveTournamentPage() {
                 
                 for (let courtIdx = 0; courtIdx < numCourts; courtIdx++) {
                     if (!occupiedSlots[timeSlotToTryForThisMatch] || !occupiedSlots[timeSlotToTryForThisMatch][courtIdx]) {
+                         const d1LastPlay = lastPlayedTimeSlotByDupla.get(playoffMatch.dupla1.id);
+                         const d2LastPlay = lastPlayedTimeSlotByDupla.get(playoffMatch.dupla2.id);
+                         // No strict rest for playoffs, but ensure not playing same slot if ID is not placeholder
+                         let d1BusyThisSlot = false;
+                         let d2BusyThisSlot = false;
+                         if (!playoffMatch.dupla1.id.startsWith("placeholder-")) {
+                            d1BusyThisSlot = occupiedSlots[timeSlotToTryForThisMatch].some(slot => slot?.duplaIds.includes(playoffMatch.dupla1.id));
+                         }
+                         if (!playoffMatch.dupla2.id.startsWith("placeholder-")) {
+                            d2BusyThisSlot = occupiedSlots[timeSlotToTryForThisMatch].some(slot => slot?.duplaIds.includes(playoffMatch.dupla2.id));
+                         }
+
+
+                        if (d1BusyThisSlot || d2BusyThisSlot) continue;
+                        
                         occupiedSlots[timeSlotToTryForThisMatch][courtIdx] = { 
                             matchId: playoffMatch.id, 
                             categoryId: category.id, 
@@ -755,6 +831,8 @@ export default function ActiveTournamentPage() {
                         playoffMatch.time = format(addMinutes(tournamentStartDate, timeSlotToTryForThisMatch * matchDuration), "HH:mm");
                         
                         playoffMatchesForCategory!.push(playoffMatch); 
+                        lastPlayedTimeSlotByDupla.set(playoffMatch.dupla1.id, timeSlotToTryForThisMatch);
+                        lastPlayedTimeSlotByDupla.set(playoffMatch.dupla2.id, timeSlotToTryForThisMatch);
 
                         currentOverallLatestTimeSlot = Math.max(currentOverallLatestTimeSlot, timeSlotToTryForThisMatch);
                         scheduled = true;
@@ -895,7 +973,7 @@ export default function ActiveTournamentPage() {
                             standing1.pp -= 1;
                         }
                         
-                        if (!wasPending) { // Only decrement PJ if it was previously completed
+                        if (!wasPending) { 
                              standing1.pj -=1; 
                              standing2.pj -=1;
                         }
@@ -1327,3 +1405,4 @@ export default function ActiveTournamentPage() {
 
 
     
+
