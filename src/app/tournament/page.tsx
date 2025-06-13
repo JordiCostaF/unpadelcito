@@ -68,7 +68,7 @@ const categorySchema = z.object({
 const individualPlayerInDuplaSchema = z.object({
   name: z.string().min(2, { message: "Nombre del jugador debe tener al menos 2 caracteres." }),
   rut: z.string().optional(), // RUT es opcional
-  position: z.enum(["drive", "reves", "ambos"], { required_error: "Selecciona una posición." }),
+  // position: z.enum(["drive", "reves", "ambos"], { required_error: "Selecciona una posición." }), // Position removed
 });
 
 const duplaSchema = z.object({
@@ -99,7 +99,7 @@ export interface PlayerFormValuesForActive {
   id: string;
   name: string;
   rut?: string;
-  position: "drive" | "reves" | "ambos";
+  position: "drive" | "reves" | "ambos"; // Still needed for active-tournament
   categoryId: string;
 }
 
@@ -149,8 +149,8 @@ export default function TournamentPage() {
   const duplaForm = useForm<Omit<DuplaFormValues, 'id'>>({ // id se genera al añadir
     resolver: zodResolver(duplaSchema.omit({id: true})),
     defaultValues: {
-      player1: { name: "", position: undefined },
-      player2: { name: "", position: undefined },
+      player1: { name: "" }, // Position removed
+      player2: { name: "" }, // Position removed
       categoryId: "",
     },
   });
@@ -165,8 +165,8 @@ export default function TournamentPage() {
   useEffect(() => {
     if (editingDupla) {
       editDuplaForm.reset({
-        player1: editingDupla.player1,
-        player2: editingDupla.player2,
+        player1: { name: editingDupla.player1.name, rut: editingDupla.player1.rut }, // Position removed
+        player2: { name: editingDupla.player2.name, rut: editingDupla.player2.rut }, // Position removed
         categoryId: editingDupla.categoryId,
       });
     }
@@ -222,14 +222,14 @@ export default function TournamentPage() {
               id: crypto.randomUUID(),
               name: d.player1.name,
               rut: d.player1.rut || `TEMP-${d.player1.name.replace(/\s+/g, '')}`,
-              position: d.player1.position,
+              position: "ambos", // Default position for compatibility
               categoryId: category.id,
             };
             const p2Active: PlayerFormValuesForActive = {
               id: crypto.randomUUID(),
               name: d.player2.name,
               rut: d.player2.rut || `TEMP-${d.player2.name.replace(/\s+/g, '')}`,
-              position: d.player2.position,
+              position: "ambos", // Default position for compatibility
               categoryId: category.id,
             };
             return {
@@ -282,14 +282,11 @@ export default function TournamentPage() {
   }
 
   function handleAddDupla(duplaData: Omit<DuplaFormValues, 'id'>) {
-    // Opcional: Validación de que los dos jugadores de una dupla no sean la misma persona (por nombre, si RUT no es obligatorio)
-    // Opcional: Validación de que la misma combinación exacta de jugadores no se registre dos veces en la misma categoría.
-    // Por simplicidad, se omiten estas validaciones complejas por ahora.
     appendDupla({ ...duplaData, id: crypto.randomUUID() });
     duplaForm.reset({
-      player1: { name: "", position: undefined },
-      player2: { name: "", position: undefined },
-      categoryId: duplaData.categoryId, // Mantener la última categoría seleccionada
+      player1: { name: "" }, // Position removed
+      player2: { name: "" }, // Position removed
+      categoryId: duplaData.categoryId, 
     });
     toast({
       title: "Dupla Añadida",
@@ -310,7 +307,7 @@ export default function TournamentPage() {
   function handleUpdateDupla(data: Omit<DuplaFormValues, 'id'>) {
     if (!editingDupla) return;
     
-    updateDupla(editingDupla.originalIndex, { ...data, id: editingDupla.id }); // Mantener el ID original
+    updateDupla(editingDupla.originalIndex, { ...data, id: editingDupla.id }); 
     toast({
       title: "Dupla Actualizada",
       description: `Los datos de la dupla ${data.player1.name} / ${data.player2.name} han sido actualizados.`,
@@ -333,10 +330,10 @@ export default function TournamentPage() {
 
   const fillWithTestData = () => {
     form.reset({
-      tournamentName: "Torneo de Duplas Pre-formadas",
+      tournamentName: "Torneo de Duplas Pre-formadas Elite",
       date: new Date(),
-      time: "14:00",
-      place: "Club de Padel Las Aguilas",
+      time: "14:30",
+      place: "Club Padel Masters",
       categories: [],
       duplas: [],
     });
@@ -344,29 +341,28 @@ export default function TournamentPage() {
     replaceDuplas([]);   
     
     const testCategoriesArray: CategoryFormValues[] = [
-      { id: crypto.randomUUID(), type: "varones", level: "4° Categoría" },
-      { id: crypto.randomUUID(), type: "damas", level: "Categoría C" },
-      { id: crypto.randomUUID(), type: "mixto", level: "Mixto B" },
+      { id: crypto.randomUUID(), type: "varones", level: "3° Categoría" },
+      { id: crypto.randomUUID(), type: "damas", level: "Categoría A" },
+      { id: crypto.randomUUID(), type: "mixto", level: "Mixto Elite" },
     ];
     
     replaceCategories(testCategoriesArray); 
 
     const newDuplasArray: DuplaFormValues[] = [];
-    const playersPerCategory = 8; // 8 duplas por categoría = 16 jugadores
-    const positions: IndividualPlayerInDuplaValues["position"][] = ["drive", "reves", "ambos"];
+    const duplasPerCategory = 6; 
 
     for (let catIdx = 0; catIdx < testCategoriesArray.length; catIdx++) {
         const categoryId = testCategoriesArray[catIdx].id;
-        for (let i = 0; i < playersPerCategory; i++) {
+        for (let i = 0; i < duplasPerCategory; i++) {
             newDuplasArray.push({
                 id: crypto.randomUUID(),
                 player1: {
-                    name: `Jugador ${catIdx * playersPerCategory * 2 + i * 2 + 1}`,
-                    position: positions[(i * 2) % 3],
+                    name: `Atleta ${catIdx * duplasPerCategory * 2 + i * 2 + 1}`,
+                    rut: `${10000000 + catIdx * duplasPerCategory * 2 + i * 2 + 1}-K`
                 },
                 player2: {
-                    name: `Jugador ${catIdx * playersPerCategory * 2 + i * 2 + 2}`,
-                    position: positions[(i * 2 + 1) % 3],
+                    name: `Atleta ${catIdx * duplasPerCategory * 2 + i * 2 + 2}`,
+                    rut: `${10000000 + catIdx * duplasPerCategory * 2 + i * 2 + 2}-9`
                 },
                 categoryId: categoryId,
             });
@@ -375,7 +371,7 @@ export default function TournamentPage() {
     replaceDuplas(newDuplasArray); 
 
     toast({
-      title: "Datos de Prueba Cargados",
+      title: "Datos de Prueba Cargados (Duplas)",
       description: `El formulario ha sido llenado con ${testCategoriesArray.length} categorías y ${newDuplasArray.length} duplas.`,
     });
   };
@@ -574,7 +570,7 @@ export default function TournamentPage() {
                             toast({
                               title: "Advertencia",
                               description: `La categoría ${category.type} - ${category.level} tiene ${duplasInCategory.length} dupla(s) inscrita(s). Si la eliminas, estas duplas quedarán sin categoría o serán eliminadas.`,
-                              variant: "destructive" // Or "default" for a softer warning
+                              variant: "destructive" 
                             });
                           }
                           removeCategory(index);
@@ -630,18 +626,11 @@ export default function TournamentPage() {
                             />
                             <FormField
                                 control={duplaForm.control}
-                                name="player1.position"
+                                name="player1.rut"
                                 render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Posición Jugador 1</FormLabel>
-                                    <Select onValueChange={field.onChange} value={field.value}>
-                                    <FormControl><SelectTrigger><SelectValue placeholder="Selecciona posición" /></SelectTrigger></FormControl>
-                                    <SelectContent>
-                                        <SelectItem value="drive">Drive</SelectItem>
-                                        <SelectItem value="reves">Revés</SelectItem>
-                                        <SelectItem value="ambos">Ambos</SelectItem>
-                                    </SelectContent>
-                                    </Select>
+                                    <FormLabel>RUT Jugador 1 (Opcional)</FormLabel>
+                                    <FormControl><Input placeholder="12345678-9" {...field} /></FormControl>
                                     <FormMessage />
                                 </FormItem>
                                 )}
@@ -662,20 +651,13 @@ export default function TournamentPage() {
                                 </FormItem>
                                 )}
                             />
-                             <FormField
+                            <FormField
                                 control={duplaForm.control}
-                                name="player2.position"
+                                name="player2.rut"
                                 render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Posición Jugador 2</FormLabel>
-                                    <Select onValueChange={field.onChange} value={field.value}>
-                                    <FormControl><SelectTrigger><SelectValue placeholder="Selecciona posición" /></SelectTrigger></FormControl>
-                                    <SelectContent>
-                                        <SelectItem value="drive">Drive</SelectItem>
-                                        <SelectItem value="reves">Revés</SelectItem>
-                                        <SelectItem value="ambos">Ambos</SelectItem>
-                                    </SelectContent>
-                                    </Select>
+                                    <FormLabel>RUT Jugador 2 (Opcional)</FormLabel>
+                                    <FormControl><Input placeholder="12345678-9" {...field} /></FormControl>
                                     <FormMessage />
                                 </FormItem>
                                 )}
@@ -738,9 +720,13 @@ export default function TournamentPage() {
                                     <span className="text-sm font-medium text-primary pt-0.5 w-6 text-right">{duplaIndex + 1}.</span>
                                     <div>
                                       <p className="font-semibold">{dupla.player1.name} / {dupla.player2.name}</p>
-                                      <p className="text-xs text-muted-foreground">
-                                        J1: <span className="capitalize">{dupla.player1.position}</span> - J2: <span className="capitalize">{dupla.player2.position}</span>
-                                      </p>
+                                      {(dupla.player1.rut || dupla.player2.rut) && (
+                                        <p className="text-xs text-muted-foreground">
+                                          {dupla.player1.rut && `RUT J1: ${dupla.player1.rut}`}
+                                          {dupla.player1.rut && dupla.player2.rut && " - "}
+                                          {dupla.player2.rut && `RUT J2: ${dupla.player2.rut}`}
+                                        </p>
+                                      )}
                                     </div>
                                   </div>
                                   <div className="flex items-center space-x-1">
@@ -820,18 +806,11 @@ export default function TournamentPage() {
                             />
                             <FormField
                                 control={editDuplaForm.control}
-                                name="player1.position"
+                                name="player1.rut"
                                 render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Posición Jugador 1</FormLabel>
-                                    <Select onValueChange={field.onChange} value={field.value}>
-                                    <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                                    <SelectContent>
-                                        <SelectItem value="drive">Drive</SelectItem>
-                                        <SelectItem value="reves">Revés</SelectItem>
-                                        <SelectItem value="ambos">Ambos</SelectItem>
-                                    </SelectContent>
-                                    </Select>
+                                    <FormLabel>RUT Jugador 1 (Opcional)</FormLabel>
+                                    <FormControl><Input {...field} /></FormControl>
                                     <FormMessage />
                                 </FormItem>
                                 )}
@@ -852,20 +831,13 @@ export default function TournamentPage() {
                                 </FormItem>
                                 )}
                             />
-                             <FormField
+                            <FormField
                                 control={editDuplaForm.control}
-                                name="player2.position"
+                                name="player2.rut"
                                 render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Posición Jugador 2</FormLabel>
-                                    <Select onValueChange={field.onChange} value={field.value}>
-                                    <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                                    <SelectContent>
-                                        <SelectItem value="drive">Drive</SelectItem>
-                                        <SelectItem value="reves">Revés</SelectItem>
-                                        <SelectItem value="ambos">Ambos</SelectItem>
-                                    </SelectContent>
-                                    </Select>
+                                    <FormLabel>RUT Jugador 2 (Opcional)</FormLabel>
+                                    <FormControl><Input {...field} /></FormControl>
                                     <FormMessage />
                                 </FormItem>
                                 )}
@@ -907,3 +879,5 @@ export default function TournamentPage() {
     </div>
   );
 }
+
+    
