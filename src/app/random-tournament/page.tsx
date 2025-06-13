@@ -355,10 +355,10 @@ export default function RandomTournamentPage() {
 
   const fillWithTestData = () => {
     form.reset({
-      tournamentName: "Torneo de Prueba Rápida",
+      tournamentName: "Torneo de Prueba Avanzado",
       date: new Date(),
-      time: "10:00",
-      place: "Club de Pádel Central",
+      time: "09:30",
+      place: "Club Padelmania",
       categories: [],
       players: [],
     });
@@ -366,24 +366,28 @@ export default function RandomTournamentPage() {
     replacePlayers([]);   
     
     const testCategoriesArray: CategoryFormValues[] = [
-      { id: crypto.randomUUID(), type: "varones", level: "3° Categoría" },
-      { id: crypto.randomUUID(), type: "damas", level: "Categoría B" },
+      { id: crypto.randomUUID(), type: "varones", level: "2° Categoría" },
+      { id: crypto.randomUUID(), type: "varones", level: "4° Categoría" },
+      { id: crypto.randomUUID(), type: "damas", level: "Categoría A" },
+      { id: crypto.randomUUID(), type: "damas", level: "Categoría C" },
     ];
     
     replaceCategories(testCategoriesArray); 
 
     const newPlayersArray: PlayerFormValues[] = [];
     const positions: PlayerFormValues["position"][] = ["drive", "reves", "ambos"];
+    const totalPlayers = 40;
+    const playersPerCategory = totalPlayers / testCategoriesArray.length;
 
-    for (let i = 0; i < 40; i++) {
-      const categoryIndex = i < 20 ? 0 : 1; 
-      const rutBase = 10000000 + i * 1000 + Math.floor(Math.random() * 1000);
+    for (let i = 0; i < totalPlayers; i++) {
+      const categoryIndex = Math.floor(i / playersPerCategory);
+      const rutBase = 12000000 + i * 1000 + Math.floor(Math.random() * 1000);
       const dvOptions = [...Array(10).keys()].map(String).concat(['K']);
       const dv = dvOptions[Math.floor(Math.random() * dvOptions.length)];
       
       newPlayersArray.push({
         id: crypto.randomUUID(),
-        name: `Jugador ${i + 1}`,
+        name: `Test Player ${i + 1}`,
         rut: `${rutBase}-${dv}`,
         position: positions[i % 3],
         categoryId: testCategoriesArray[categoryIndex].id, 
@@ -391,10 +395,9 @@ export default function RandomTournamentPage() {
     }
     replacePlayers(newPlayersArray); 
 
-
     toast({
       title: "Datos de Prueba Cargados",
-      description: "El formulario ha sido llenado con 2 categorías y 40 jugadores.",
+      description: `El formulario ha sido llenado con ${testCategoriesArray.length} categorías y ${totalPlayers} jugadores.`,
     });
   };
 
