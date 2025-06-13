@@ -133,6 +133,24 @@ interface GroupScheduleState {
   };
 }
 
+// Helper function to compare standings based on multiple criteria
+function compareStandingsNumerically(sA: Standing, sB: Standing): number {
+  // 1. Points (descending)
+  if (sA.pts !== sB.pts) return sB.pts - sA.pts;
+  // 2. Matches Won (PG) (descending)
+  if (sA.pg !== sB.pg) return sB.pg - sA.pg;
+  // 3. Point Difference (PF - PC) (descending)
+  const diffA = sA.pf - sA.pc;
+  const diffB = sB.pf - sB.pc;
+  if (diffA !== diffB) return diffB - diffA;
+  // 4. Points For (PF) (descending)
+  if (sA.pf !== sB.pf) return sB.pf - sA.pf;
+  // 5. Points Against (PC) (ascending)
+  if (sA.pc !== sB.pc) return sA.pc - sB.pc;
+  
+  return 0; // Still tied on numeric criteria
+}
+
 
 const generateDuplaId = (d: [PlayerFormValues, PlayerFormValues]): string => {
   const p1 = d?.[0];
@@ -416,7 +434,7 @@ export default function ActiveTournamentPage() {
                     initialGroupSettings[group.id] = {
                         court: group.groupAssignedCourt?.toString() || '1',
                         startTime: group.groupStartTime || '09:00',
-                        duration: group.groupMatchDuration?.toString() || '30',
+                        duration: group.groupMatchDuration?.toString() || (matchDurationGlobal?.toString() || '30'),
                     };
                 });
             });
@@ -445,7 +463,7 @@ export default function ActiveTournamentPage() {
       setGroupScheduleSettings({});
     }
     setIsLoading(false);
-  }, [toast]);
+  }, [toast, matchDurationGlobal]);
 
   useEffect(() => {
     loadTournamentData();
@@ -485,7 +503,7 @@ export default function ActiveTournamentPage() {
     setGroupScheduleSettings(prev => ({
       ...prev,
       [groupId]: {
-        ...(prev[groupId] || { court: '1', startTime: '09:00', duration: '30' }),
+        ...(prev[groupId] || { court: '1', startTime: '09:00', duration: matchDurationGlobal?.toString() || '30' }),
         [field]: value,
       },
     }));
@@ -525,7 +543,7 @@ export default function ActiveTournamentPage() {
                 name: `Grupo ${groupLetter}`,
                 duplas: [...categoryDuplas],
                 standings: categoryDuplas.map(d => ({ duplaId: d.id, duplaName: d.nombre, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0, pts: 0 })),
-                matches: generateAndOrderGroupMatches([...categoryDuplas], groupId), // All matches have court/time undefined
+                matches: generateAndOrderGroupMatches([...categoryDuplas], groupId), 
                 groupAssignedCourt: undefined,
                 groupStartTime: undefined,
                 groupMatchDuration: undefined,
@@ -642,13 +660,14 @@ export default function ActiveTournamentPage() {
     groupToSchedule.groupStartTime = groupStartTimeStr;
     groupToSchedule.groupMatchDuration = groupMatchDuration;
     
+    // Reset previous scheduling for this group's matches before re-scheduling
     groupToSchedule.matches.forEach(match => {
         match.time = undefined;
         match.court = undefined;
-        // Reset scores and status if re-scheduling to avoid inconsistencies
+        // Optionally reset scores if re-scheduling implies a full reset of group progress
         // match.score1 = undefined; 
         // match.score2 = undefined;
-        // match.status = 'pending';
+        // match.status = 'pending'; // If scores are reset, status should also be reset
         // match.winnerId = undefined;
     });
     
@@ -656,26 +675,27 @@ export default function ActiveTournamentPage() {
     let [startHours, startMinutes] = groupStartTimeStr.split(':').map(Number);
     let currentMatchDateTime = setMinutes(setHours(tournamentBaseDate, startHours), startMinutes);
 
-    const lastPlayedByDuplaInGroup = new Map<string, Date>();
+    const lastPlayedByDuplaInGroup = new Map<string, Date>(); // Tracks when a dupla *started* its last match in this scheduling session
 
     for (let i = 0; i < groupToSchedule.matches.length; i++) {
         const match = groupToSchedule.matches[i];
         let duplasAreRested = false;
-        let attemptTime = new Date(currentMatchDateTime.getTime()); 
+        let attemptTime = new Date(currentMatchDateTime.getTime()); // Start trying from the current scheduled time for the group
 
         // Check rest rule for duplas within this group's scheduling session
         while(!duplasAreRested) {
-            const d1LastPlay = lastPlayedByDuplaInGroup.get(match.dupla1.id);
-            const d2LastPlay = lastPlayedByDuplaInGroup.get(match.dupla2.id);
-
-            // A dupla can play if it hasn't played yet OR if current attempt time is >= its last play end time + rest (which is implicitly one match duration here)
-            // The crucial part is that `d1LastPlay` is the START time of their last match. So they can play in the slot *after* `addMinutes(d1LastPlay, groupMatchDuration)`.
-            const d1CanPlay = !d1LastPlay || (attemptTime.getTime() >= addMinutes(d1LastPlay, groupMatchDuration).getTime());
-            const d2CanPlay = !d2LastPlay || (attemptTime.getTime() >= addMinutes(d2LastPlay, groupMatchDuration).getTime());
+            const d1LastPlayStartTime = lastPlayedByDuplaInGroup.get(match.dupla1.id);
+            const d2LastPlayStartTime = lastPlayedByDuplaInGroup.get(match.dupla2.id);
+            
+            // A dupla can play if it hasn't played yet in this session OR 
+            // if the current attemptTime is at least one full matchDuration AFTER the END of its last played match.
+            // The end of its last played match is d1LastPlayStartTime + groupMatchDuration.
+            const d1CanPlay = !d1LastPlayStartTime || (attemptTime.getTime() >= addMinutes(d1LastPlayStartTime, groupMatchDuration).getTime());
+            const d2CanPlay = !d2LastPlayStartTime || (attemptTime.getTime() >= addMinutes(d2LastPlayStartTime, groupMatchDuration).getTime());
             
             if (d1CanPlay && d2CanPlay) {
                 duplasAreRested = true;
-                currentMatchDateTime = new Date(attemptTime.getTime()); 
+                currentMatchDateTime = new Date(attemptTime.getTime()); // Confirm this attemptTime
             } else {
                 // If not rested, try the next available slot for THIS GROUP on THIS COURT
                 attemptTime = addMinutes(attemptTime, groupMatchDuration); 
@@ -685,11 +705,11 @@ export default function ActiveTournamentPage() {
         match.time = format(currentMatchDateTime, "HH:mm");
         match.court = assignedCourt;
 
-        // Record the start time of this match for rest calculation
+        // Record the start time of this match for rest calculation for subsequent matches in this group
         lastPlayedByDuplaInGroup.set(match.dupla1.id, new Date(currentMatchDateTime.getTime()));
         lastPlayedByDuplaInGroup.set(match.dupla2.id, new Date(currentMatchDateTime.getTime()));
         
-        // The next match for this group will start after this one finishes
+        // The next match for this group on this court will start after this one finishes
         currentMatchDateTime = addMinutes(currentMatchDateTime, groupMatchDuration);
     }
 
@@ -753,20 +773,23 @@ export default function ActiveTournamentPage() {
 
                         if (oldScore1 > oldScore2) { 
                             standing1.pg -= 1;
-                            standing1.pts -= 2; // Assuming 2 points for a win
+                            standing1.pts -= 2; 
                             standing2.pp -= 1;
                         } else if (oldScore2 > oldScore1) { 
                             standing2.pg -= 1;
                             standing2.pts -= 2;
                             standing1.pp -= 1;
                         }
-                        // PJ was already counted, so no change if just editing score
-                    } else if (wasPending) { // Only add PJ if it was truly a new result
-                        standing1.pj += 1;
-                        standing2.pj += 1;
+                         // PJ was already counted if editing, only decrement if was not pending.
+                        standing1.pj -=1; 
+                        standing2.pj -=1;
+
                     }
+                    // Apply new result (or re-apply if it was just an edit)
+                    // Add PJ if it was truly a new result or re-adding after revert
+                    standing1.pj += 1;
+                    standing2.pj += 1;
                     
-                    // Apply new result
                     standing1.pf += score1;
                     standing1.pc += score2;
                     standing2.pf += score2;
@@ -774,7 +797,7 @@ export default function ActiveTournamentPage() {
 
                     if (score1 > score2) { 
                         standing1.pg += 1;
-                        standing1.pts += 2; // Assuming 2 points for a win
+                        standing1.pts += 2; 
                         standing2.pp += 1;
                     } else { 
                         standing2.pg += 1;
@@ -805,13 +828,21 @@ export default function ActiveTournamentPage() {
                     const loserDupla = matchToUpdate.winnerId === matchToUpdate.dupla1.id ? matchToUpdate.dupla2 : matchToUpdate.dupla1;
                     
                     // Check if SF1 or SF2 to correctly place winner/loser
-                    if (matchToUpdate.id.endsWith('SF1')) { // Winner G_A vs RU_G_B
+                    if (matchToUpdate.id.endsWith('SF1')) { // Winner G_A vs RU_G_B (or equivalent if single group)
                         finalMatch.dupla1 = winnerDupla;
                         thirdPlaceMatch.dupla1 = loserDupla;
-                    } else if (matchToUpdate.id.endsWith('SF2')) { // Winner G_B vs RU_G_A
+                    } else if (matchToUpdate.id.endsWith('SF2')) { // Winner G_B vs RU_G_A (or equivalent)
                         finalMatch.dupla2 = winnerDupla;
                         thirdPlaceMatch.dupla2 = loserDupla;
                     }
+                     // Reset scores and status for final and TP if SF results change
+                    [finalMatch, thirdPlaceMatch].forEach(m => {
+                        if (m.dupla1.id.startsWith('placeholder-') || m.dupla2.id.startsWith('placeholder-')) {
+                           // Keep placeholders if participants are not yet defined
+                        } else {
+                           m.score1 = undefined; m.score2 = undefined; m.status = 'pending'; m.winnerId = undefined;
+                        }
+                    });
                 }
             }
         }
@@ -872,31 +903,64 @@ const handleConfirmPlayoffSchedule = () => {
     const newFixture = JSON.parse(JSON.stringify(fixture)) as FixtureData;
     const catFixture = newFixture[categoryId];
 
-    if (!catFixture || !catFixture.groups || !catFixture.playoffMatches) {
-        toast({ title: "Error", description: "Datos de fixture incompletos.", variant: "destructive" });
+    if (!catFixture || !catFixture.playoffMatches) {
+        toast({ title: "Error", description: "Datos de fixture incompletos para playoffs.", variant: "destructive" });
         return;
     }
+    if (!catFixture.groups) catFixture.groups = []; // Ensure groups array exists
     
     const groupA = catFixture.groups.find(g => g.name.toLowerCase().includes("grupo a")) || catFixture.groups[0];
-    const groupB = catFixture.groups.length > 1 ? (catFixture.groups.find(g => g.name.toLowerCase().includes("grupo b")) || catFixture.groups[1]) : groupA; // If only one group, B is same as A for court fallback
+    const groupB = catFixture.groups.length > 1 ? (catFixture.groups.find(g => g.name.toLowerCase().includes("grupo b")) || catFixture.groups[1]) : groupA;
 
-    if (!groupA) { // groupB can be same as groupA if only one group
-        toast({ title: "Error", description: "No se pudieron identificar los grupos de referencia para los playoffs.", variant: "destructive" });
-        return;
+    let sortedStandingsA: Standing[] = [];
+    let sortedStandingsB: Standing[] = [];
+
+    if (groupA && groupA.standings.length > 0) {
+        sortedStandingsA = [...groupA.standings].sort(compareStandingsNumerically);
+        // Apply head-to-head for top 2 of Group A if numerically tied
+        if (sortedStandingsA.length >= 2 && compareStandingsNumerically(sortedStandingsA[0], sortedStandingsA[1]) === 0) {
+            const headToHeadMatch = groupA.matches.find(m =>
+                m.status === 'completed' &&
+                ((m.dupla1.id === sortedStandingsA[0].duplaId && m.dupla2.id === sortedStandingsA[1].duplaId) ||
+                 (m.dupla1.id === sortedStandingsA[1].duplaId && m.dupla2.id === sortedStandingsA[0].duplaId))
+            );
+            if (headToHeadMatch?.winnerId === sortedStandingsA[1].duplaId) {
+                [sortedStandingsA[0], sortedStandingsA[1]] = [sortedStandingsA[1], sortedStandingsA[0]];
+            }
+        }
     }
 
-    const sortedStandingsA = [...groupA.standings].sort((a, b) => b.pts - a.pts || (b.pf - b.pc) - (a.pf - a.pc) || b.pf - a.pf);
-    const sortedStandingsB = groupB ? [...groupB.standings].sort((a, b) => b.pts - a.pts || (b.pf - b.pc) - (a.pf - a.pc) || b.pf - a.pf) : sortedStandingsA;
+    if (groupB && groupB.standings.length > 0) {
+        sortedStandingsB = [...groupB.standings].sort(compareStandingsNumerically);
+        if (groupB.id === groupA?.id) sortedStandingsB = sortedStandingsA; // If only one group, B is same as A
+        else if (sortedStandingsB.length >= 2 && compareStandingsNumerically(sortedStandingsB[0], sortedStandingsB[1]) === 0) {
+             const headToHeadMatch = groupB.matches.find(m =>
+                m.status === 'completed' &&
+                ((m.dupla1.id === sortedStandingsB[0].duplaId && m.dupla2.id === sortedStandingsB[1].duplaId) ||
+                 (m.dupla1.id === sortedStandingsB[1].duplaId && m.dupla2.id === sortedStandingsB[0].duplaId))
+            );
+            if (headToHeadMatch?.winnerId === sortedStandingsB[1].duplaId) {
+                [sortedStandingsB[0], sortedStandingsB[1]] = [sortedStandingsB[1], sortedStandingsB[0]];
+            }
+        }
+    } else if (groupA) { // Only group A exists
+        sortedStandingsB = sortedStandingsA;
+    }
 
 
-    const winnerA = groupA.duplas.find(d => d.id === sortedStandingsA[0]?.duplaId);
-    const runnerUpA = groupA.duplas.find(d => d.id === sortedStandingsA[1]?.duplaId);
-    const winnerB = groupB.duplas.find(d => d.id === sortedStandingsB[0]?.duplaId);
-    const runnerUpB = groupB.duplas.find(d => d.id === sortedStandingsB[1]?.duplaId);
+    const winnerA = groupA?.duplas.find(d => d.id === sortedStandingsA[0]?.duplaId);
+    const runnerUpA = groupA?.duplas.find(d => d.id === sortedStandingsA[1]?.duplaId);
+    const winnerB = groupB?.duplas.find(d => d.id === sortedStandingsB[0]?.duplaId);
+    const runnerUpB = groupB?.duplas.find(d => d.id === sortedStandingsB[1]?.duplaId);
 
-    if (!winnerA || !runnerUpA || !winnerB || !runnerUpB) {
+    if (catFixture.groups.length > 0 && (!winnerA || !runnerUpA || !winnerB || !runnerUpB)) {
         toast({ title: "Error de Clasificación", description: "No se pudieron determinar todos los clasificados. Asegúrate que los grupos tengan resultados y al menos 2 duplas.", variant: "destructive"});
         return;
+    } else if (catFixture.groups.length === 0 && catFixture.playoffMatches && catFixture.playoffMatches.length > 0) {
+        // For direct elimination, duplas might be pre-assigned or need a different logic
+        // This part assumes group-based qualification for now.
+        // If direct elimination with manual seeding is a feature, it needs more specific handling.
+        // For now, if no groups, we use placeholders if they are still placeholders.
     }
     
     const sf1Match = catFixture.playoffMatches.find(m => m.id.endsWith('-SF1'));
@@ -904,19 +968,36 @@ const handleConfirmPlayoffSchedule = () => {
     const finalMatch = catFixture.playoffMatches.find(m => m.stage === 'final');
     const thirdPlaceMatch = catFixture.playoffMatches.find(m => m.stage === 'tercer_puesto');
 
-    if (sf1Match) { sf1Match.dupla1 = winnerA; sf1Match.dupla2 = runnerUpB; } else { toast({title:"Error", description:"SF1 no encontrada"}); return; }
-    if (sf2Match) { sf2Match.dupla1 = winnerB; sf2Match.dupla2 = runnerUpA; } else { toast({title:"Error", description:"SF2 no encontrada"}); return; }
-    // Final and TP duplas will be set by handleSaveResult after SFs are played
+    if (sf1Match) { 
+        if(winnerA && runnerUpB) { sf1Match.dupla1 = winnerA; sf1Match.dupla2 = runnerUpB; } 
+        else if (!winnerA && sf1Match.dupla1.id.startsWith('placeholder-')) { /* keep placeholder */ }
+        else if (!runnerUpB && sf1Match.dupla2.id.startsWith('placeholder-')) { /* keep placeholder */ }
+        else if (catFixture.groups.length > 0) {toast({title:"Error", description:"SF1: Clasificados A o B no encontrados."}); return; }
+    } else { toast({title:"Error", description:"SF1 no encontrada"}); return; }
+
+    if (sf2Match) { 
+        if(winnerB && runnerUpA) { sf2Match.dupla1 = winnerB; sf2Match.dupla2 = runnerUpA; } 
+        else if (!winnerB && sf2Match.dupla1.id.startsWith('placeholder-')) { /* keep placeholder */ }
+        else if (!runnerUpA && sf2Match.dupla2.id.startsWith('placeholder-')) { /* keep placeholder */ }
+        else if (catFixture.groups.length > 0) {toast({title:"Error", description:"SF2: Clasificados B o A no encontrados."}); return; }
+    } else { toast({title:"Error", description:"SF2 no encontrada"}); return; }
+
+    // Reset Final and TP if SF participants are not placeholders, as their scores/status will be new
+    [finalMatch, thirdPlaceMatch].forEach(m => {
+        if (m && (!m.dupla1.id.startsWith('placeholder-') || !m.dupla2.id.startsWith('placeholder-'))) {
+             m.score1 = undefined; m.score2 = undefined; m.status = 'pending'; m.winnerId = undefined;
+        }
+    });
+
 
     let lastRelevantGroupMatchEndTime = new Date(0);
-    catFixture.groups.forEach(group => {
-        if (!group.groupStartTime || !group.groupMatchDuration) return;
-        const groupBaseDate = torneo.date ? new Date(torneo.date) : new Date();
-        let groupCurrentTime = parse(group.groupStartTime, "HH:mm", groupBaseDate);
-
-        if(isValid(groupCurrentTime)) {
+    if(catFixture.groups.length > 0) {
+        catFixture.groups.forEach(group => {
+            if (!group.groupStartTime || !group.groupMatchDuration) return;
+            const groupBaseDate = torneo.date ? new Date(torneo.date) : new Date();
+            
             group.matches.forEach(match => {
-                 if (match.time) { // Only consider matches that have been scheduled within the group
+                 if (match.time && match.status === 'completed') { // Only consider matches that have been scheduled and played
                     const matchStartTime = parse(match.time, "HH:mm", groupBaseDate);
                     if (isValid(matchStartTime)) {
                         const matchEndTime = addMinutes(matchStartTime, group.groupMatchDuration!);
@@ -924,20 +1005,18 @@ const handleConfirmPlayoffSchedule = () => {
                             lastRelevantGroupMatchEndTime = matchEndTime;
                         }
                     }
-                 } else { // This indicates an issue if we reached here.
-                    console.warn(`Match ${match.id} in group ${group.name} is unscheduled during playoff calculation.`);
                  }
             });
-        }
-    });
+        });
+    }
 
-    if (lastRelevantGroupMatchEndTime.getTime() === new Date(0).getTime() && catFixture.groups.length > 0) {
-        toast({ title: "Advertencia", description: "No se pudo determinar la hora de finalización de los partidos de grupo. Los playoffs comenzarán desde la hora general del torneo.", variant: "warning" });
+
+    if (lastRelevantGroupMatchEndTime.getTime() === new Date(0).getTime()) { // No group matches played/scheduled or no groups
         const [generalHours, generalMinutes] = (torneo.time || "09:00").split(':').map(Number);
         lastRelevantGroupMatchEndTime = setMinutes(setHours(new Date(torneo.date), generalHours), generalMinutes);
-    } else if (catFixture.groups.length === 0) { // No groups, playoffs start from tournament time
-        const [generalHours, generalMinutes] = (torneo.time || "09:00").split(':').map(Number);
-        lastRelevantGroupMatchEndTime = setMinutes(setHours(new Date(torneo.date), generalHours), generalMinutes);
+        if (catFixture.groups.length > 0) {
+             toast({ title: "Advertencia", description: "No se pudo determinar la hora de fin de grupos. Playoffs comenzarán desde hora general.", variant: "warning" });
+        }
     }
 
 
@@ -947,10 +1026,10 @@ const handleConfirmPlayoffSchedule = () => {
     // --- Schedule Semifinals ---
     let semiFinalsStartTime = addMinutes(lastRelevantGroupMatchEndTime, breakMinutes);
     
-    const courtSf1 = groupA.groupAssignedCourt || "Cancha 1";
-    const courtSf2 = (groupB && groupB.groupAssignedCourt && groupB.groupAssignedCourt !== groupA.groupAssignedCourt) 
+    const courtSf1 = groupA?.groupAssignedCourt || (numCourtsGlobal && numCourtsGlobal >= 1 ? "1" : "Cancha Principal");
+    const courtSf2 = (groupB && groupB.groupAssignedCourt && groupB.groupAssignedCourt !== courtSf1) 
                      ? groupB.groupAssignedCourt 
-                     : (groupA.groupAssignedCourt === "Cancha 1" ? "Cancha 2" : "Cancha 1");
+                     : (numCourtsGlobal && numCourtsGlobal >= 2 ? (courtSf1 === "1" ? "2" : "1") : (courtSf1 === "Cancha Principal" ? "Cancha Secundaria" : "Cancha Principal"));
 
 
     sf1Match.time = format(semiFinalsStartTime, "HH:mm");
@@ -971,10 +1050,10 @@ const handleConfirmPlayoffSchedule = () => {
     // --- Schedule Final and Third Place ---
     let finalRoundStartTime = addMinutes(latestSemiFinalEndTime, breakMinutes);
 
-    const courtFinal = groupA.groupAssignedCourt || "Cancha 1"; // Reuse Group A's court for final
-    const courtThirdPlace = (groupB && groupB.groupAssignedCourt && groupB.groupAssignedCourt !== groupA.groupAssignedCourt)
+    const courtFinal = groupA?.groupAssignedCourt || (numCourtsGlobal && numCourtsGlobal >= 1 ? "1" : "Cancha Principal");
+    const courtThirdPlace = (groupB && groupB.groupAssignedCourt && groupB.groupAssignedCourt !== courtFinal)
                           ? groupB.groupAssignedCourt
-                          : (groupA.groupAssignedCourt === "Cancha 1" ? "Cancha 2" : "Cancha 1");
+                          : (numCourtsGlobal && numCourtsGlobal >= 2 ? (courtFinal === "1" ? "2" : "1") : (courtFinal === "Cancha Principal" ? "Cancha Secundaria": "Cancha Principal"));
 
 
     if (finalMatch) {
@@ -1088,7 +1167,7 @@ const handleConfirmPlayoffSchedule = () => {
                 <SelectValue placeholder="Canchas en el recinto" />
               </SelectTrigger>
               <SelectContent>
-                {Array.from({ length: 19 }, (_, i) => i + 2).map(n => ( // Up to 20 courts
+                {Array.from({ length: 19 }, (_, i) => i + 2).map(n => ( 
                   <SelectItem key={n} value={n.toString()}>{n} canchas</SelectItem>
                 ))}
               </SelectContent>
@@ -1272,19 +1351,21 @@ const handleConfirmPlayoffSchedule = () => {
                                                             <TableHead className="w-[40px] px-1 text-center">PJ</TableHead>
                                                             <TableHead className="w-[40px] px-1 text-center">PG</TableHead>
                                                             <TableHead className="w-[40px] px-1 text-center">PP</TableHead>
+                                                            <TableHead className="w-[60px] px-1 text-center">PF-PC</TableHead>
                                                             <TableHead className="w-[40px] px-1 text-center">PF</TableHead>
                                                             <TableHead className="w-[40px] px-1 text-center">PC</TableHead>
                                                             <TableHead className="w-[40px] px-1 text-center">Pts</TableHead>
                                                         </TableRow>
                                                     </TableHeader>
                                                     <TableBody>
-                                                        {group.standings.sort((a,b) => b.pts - a.pts || (b.pf - b.pc) - (a.pf - a.pc) || b.pf - a.pf ).map((s, idx) => (
+                                                        {[...group.standings].sort(compareStandingsNumerically).map((s, idx) => (
                                                             <TableRow key={s.duplaId}>
                                                                 <TableCell className="px-2 text-center">{idx + 1}</TableCell>
                                                                 <TableCell className="px-2 text-xs sm:text-sm">{s.duplaName}</TableCell>
                                                                 <TableCell className="px-1 text-center">{s.pj}</TableCell>
                                                                 <TableCell className="px-1 text-center">{s.pg}</TableCell>
                                                                 <TableCell className="px-1 text-center">{s.pp}</TableCell>
+                                                                <TableCell className="px-1 text-center">{s.pf - s.pc}</TableCell>
                                                                 <TableCell className="px-1 text-center">{s.pf}</TableCell>
                                                                 <TableCell className="px-1 text-center">{s.pc}</TableCell>
                                                                 <TableCell className="px-1 text-center font-bold">{s.pts}</TableCell>
@@ -1492,5 +1573,7 @@ const handleConfirmPlayoffSchedule = () => {
 
 
 
+
+    
 
     
