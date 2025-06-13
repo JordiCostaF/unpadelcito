@@ -355,10 +355,10 @@ export default function RandomTournamentPage() {
 
   const fillWithTestData = () => {
     form.reset({
-      tournamentName: "Torneo de Prueba Avanzado",
+      tournamentName: "Torneo Masivo de Prueba",
       date: new Date(),
-      time: "09:30",
-      place: "Club Padelmania",
+      time: "09:00",
+      place: "Mega Padel Center",
       categories: [],
       players: [],
     });
@@ -366,28 +366,28 @@ export default function RandomTournamentPage() {
     replacePlayers([]);   
     
     const testCategoriesArray: CategoryFormValues[] = [
-      { id: crypto.randomUUID(), type: "varones", level: "2° Categoría" },
-      { id: crypto.randomUUID(), type: "varones", level: "4° Categoría" },
-      { id: crypto.randomUUID(), type: "damas", level: "Categoría A" },
-      { id: crypto.randomUUID(), type: "damas", level: "Categoría C" },
+      { id: crypto.randomUUID(), type: "varones", level: "3° Categoría" },
+      { id: crypto.randomUUID(), type: "varones", level: "5° Categoría" },
+      { id: crypto.randomUUID(), type: "damas", level: "Categoría B" },
+      { id: crypto.randomUUID(), type: "damas", level: "Damas Iniciación" },
     ];
     
     replaceCategories(testCategoriesArray); 
 
     const newPlayersArray: PlayerFormValues[] = [];
     const positions: PlayerFormValues["position"][] = ["drive", "reves", "ambos"];
-    const totalPlayers = 40;
-    const playersPerCategory = totalPlayers / testCategoriesArray.length;
+    const totalPlayers = 80; // 4 categories * 20 players
+    const playersPerCategory = totalPlayers / testCategoriesArray.length; // Should be 20
 
     for (let i = 0; i < totalPlayers; i++) {
       const categoryIndex = Math.floor(i / playersPerCategory);
-      const rutBase = 12000000 + i * 1000 + Math.floor(Math.random() * 1000);
+      const rutBase = 10000000 + i * 1000 + Math.floor(Math.random() * 1000);
       const dvOptions = [...Array(10).keys()].map(String).concat(['K']);
       const dv = dvOptions[Math.floor(Math.random() * dvOptions.length)];
       
       newPlayersArray.push({
         id: crypto.randomUUID(),
-        name: `Test Player ${i + 1}`,
+        name: `Jugador Test ${i + 1}`,
         rut: `${rutBase}-${dv}`,
         position: positions[i % 3],
         categoryId: testCategoriesArray[categoryIndex].id, 
@@ -396,8 +396,8 @@ export default function RandomTournamentPage() {
     replacePlayers(newPlayersArray); 
 
     toast({
-      title: "Datos de Prueba Cargados",
-      description: `El formulario ha sido llenado con ${testCategoriesArray.length} categorías y ${totalPlayers} jugadores.`,
+      title: "Datos de Prueba Cargados (80 Jugadores)",
+      description: `El formulario ha sido llenado con ${testCategoriesArray.length} categorías y ${totalPlayers} jugadores (${playersPerCategory} por categoría).`,
     });
   };
 
@@ -413,7 +413,7 @@ export default function RandomTournamentPage() {
 
       <div className="w-full max-w-3xl mb-4">
         <Button type="button" onClick={fillWithTestData} variant="outline" className="w-full md:w-auto">
-          <TestTube2 className="mr-2 h-4 w-4" /> Llenar con Datos de Prueba
+          <TestTube2 className="mr-2 h-4 w-4" /> Llenar con Datos de Prueba (80 Jugadores)
         </Button>
       </div>
 
@@ -896,3 +896,4 @@ export default function RandomTournamentPage() {
     
 
     
+
