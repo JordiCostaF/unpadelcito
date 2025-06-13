@@ -333,6 +333,13 @@ export default function ActiveTournamentPage() {
   const [currentEditingMatch, setCurrentEditingMatch] = useState<(Match | PlayoffMatch | null) & { categoryId?: string; groupOriginId?: string }>(null);
   const [groupScheduleSettings, setGroupScheduleSettings] = useState<GroupScheduleState>({});
 
+  const [isPlayoffSchedulerDialogOpen, setIsPlayoffSchedulerDialogOpen] = useState(false);
+  const [categoryForPlayoffScheduling, setCategoryForPlayoffScheduling] = useState<CategoriaConDuplas | null>(null);
+  const [playoffSchedulingSettings, setPlayoffSchedulingSettings] = useState<{
+      breakDuration: string;
+      defaultMatchDuration: string;
+  }>({ breakDuration: "30", defaultMatchDuration: "60" });
+
 
   const resultForm = useForm<ResultFormValues>({
     resolver: zodResolver(resultFormSchema),
@@ -518,7 +525,7 @@ export default function ActiveTournamentPage() {
                 name: `Grupo ${groupLetter}`,
                 duplas: [...categoryDuplas],
                 standings: categoryDuplas.map(d => ({ duplaId: d.id, duplaName: d.nombre, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0, pts: 0 })),
-                matches: generateAndOrderGroupMatches([...categoryDuplas], groupId),
+                matches: generateAndOrderGroupMatches([...categoryDuplas], groupId), // All matches have court/time undefined
                 groupAssignedCourt: undefined,
                 groupStartTime: undefined,
                 groupMatchDuration: undefined,
@@ -573,7 +580,7 @@ export default function ActiveTournamentPage() {
         }
         
         let playoffMatchesForCategory: PlayoffMatch[] | undefined = undefined;
-        if (groups.length === 2 && groups.every(g => g.duplas.length >=2) && groups[0].duplas.length >=2 && groups[1].duplas.length >=2 ) { 
+        if (groups.length === 2 && groups.every(g => g.duplas.length >=2)) { 
             const placeholderDuplaW_G1 = {id: 'placeholder-G1W', nombre: 'Ganador Grupo A', jugadores:[] as any};
             const placeholderDuplaRU_G1 = {id: 'placeholder-G1RU', nombre: 'Segundo Grupo A', jugadores:[] as any};
             const placeholderDuplaW_G2 = {id: 'placeholder-G2W', nombre: 'Ganador Grupo B', jugadores:[] as any};
@@ -604,7 +611,7 @@ export default function ActiveTournamentPage() {
     if (torneo) {
       sessionStorage.setItem(`fixture_${torneo.tournamentName}`, JSON.stringify(newFixture));
     }
-    toast({ title: "Enfrentamientos Generados", description: "Se ha creado la planilla de grupos y partidos. Asigna horarios y canchas a cada grupo." });
+    toast({ title: "Enfrentamientos Generados", description: "Se ha creado la planilla de grupos y partidos (sin horarios ni canchas asignadas)." });
   };
 
 
@@ -618,7 +625,7 @@ export default function ActiveTournamentPage() {
     const assignedCourt = !isNaN(parseInt(assignedCourtStr, 10)) ? parseInt(assignedCourtStr, 10) : assignedCourtStr;
     const groupMatchDuration = parseInt(groupDurationStr, 10);
 
-    if (!groupStartTimeStr || !/^\d{2}:\d{2}$/.test(groupStartTimeStr) || !groupMatchDuration) {
+    if (!groupStartTimeStr || !/^\d{2}:\d{2}$/.test(groupStartTimeStr) || !groupMatchDuration || groupMatchDuration <=0) {
       toast({ title: "Error de Configuración", description: "Hora de inicio o duración de partido inválida.", variant: "destructive" });
       return;
     }
@@ -634,15 +641,18 @@ export default function ActiveTournamentPage() {
     groupToSchedule.groupAssignedCourt = assignedCourt;
     groupToSchedule.groupStartTime = groupStartTimeStr;
     groupToSchedule.groupMatchDuration = groupMatchDuration;
-
-    // Clear previous schedule for this group's matches
+    
     groupToSchedule.matches.forEach(match => {
         match.time = undefined;
         match.court = undefined;
+        // Reset scores and status if re-scheduling to avoid inconsistencies
+        // match.score1 = undefined; 
+        // match.score2 = undefined;
+        // match.status = 'pending';
+        // match.winnerId = undefined;
     });
     
-    // Logic to schedule matches for this group sequentially
-    const tournamentBaseDate = new Date(torneo.date); // Use the tournament date as the base
+    const tournamentBaseDate = torneo.date ? new Date(torneo.date) : new Date(); 
     let [startHours, startMinutes] = groupStartTimeStr.split(':').map(Number);
     let currentMatchDateTime = setMinutes(setHours(tournamentBaseDate, startHours), startMinutes);
 
@@ -651,35 +661,41 @@ export default function ActiveTournamentPage() {
     for (let i = 0; i < groupToSchedule.matches.length; i++) {
         const match = groupToSchedule.matches[i];
         let duplasAreRested = false;
-        let attemptTime = new Date(currentMatchDateTime.getTime()); // Clone for attempts
+        let attemptTime = new Date(currentMatchDateTime.getTime()); 
 
+        // Check rest rule for duplas within this group's scheduling session
         while(!duplasAreRested) {
             const d1LastPlay = lastPlayedByDuplaInGroup.get(match.dupla1.id);
             const d2LastPlay = lastPlayedByDuplaInGroup.get(match.dupla2.id);
 
+            // A dupla can play if it hasn't played yet OR if current attempt time is >= its last play end time + rest (which is implicitly one match duration here)
+            // The crucial part is that `d1LastPlay` is the START time of their last match. So they can play in the slot *after* `addMinutes(d1LastPlay, groupMatchDuration)`.
             const d1CanPlay = !d1LastPlay || (attemptTime.getTime() >= addMinutes(d1LastPlay, groupMatchDuration).getTime());
             const d2CanPlay = !d2LastPlay || (attemptTime.getTime() >= addMinutes(d2LastPlay, groupMatchDuration).getTime());
             
             if (d1CanPlay && d2CanPlay) {
                 duplasAreRested = true;
-                currentMatchDateTime = new Date(attemptTime.getTime()); // Confirm this time
+                currentMatchDateTime = new Date(attemptTime.getTime()); 
             } else {
-                attemptTime = addMinutes(attemptTime, groupMatchDuration); // Try next slot
+                // If not rested, try the next available slot for THIS GROUP on THIS COURT
+                attemptTime = addMinutes(attemptTime, groupMatchDuration); 
             }
         }
         
         match.time = format(currentMatchDateTime, "HH:mm");
         match.court = assignedCourt;
 
+        // Record the start time of this match for rest calculation
         lastPlayedByDuplaInGroup.set(match.dupla1.id, new Date(currentMatchDateTime.getTime()));
         lastPlayedByDuplaInGroup.set(match.dupla2.id, new Date(currentMatchDateTime.getTime()));
         
+        // The next match for this group will start after this one finishes
         currentMatchDateTime = addMinutes(currentMatchDateTime, groupMatchDuration);
     }
 
     setFixture(newFixture);
     sessionStorage.setItem(`fixture_${torneo.tournamentName}`, JSON.stringify(newFixture));
-    toast({ title: "Grupo Programado", description: `Partidos del ${groupToSchedule.name} actualizados con cancha ${assignedCourt} y comenzando a las ${groupStartTimeStr}.` });
+    toast({ title: "Grupo Programado", description: `Partidos del ${groupToSchedule.name} actualizados con cancha ${assignedCourt}, comenzando a las ${groupStartTimeStr} con duración de ${groupMatchDuration} min.` });
   };
 
 
@@ -689,6 +705,7 @@ export default function ActiveTournamentPage() {
       sessionStorage.removeItem('torneoActivo');
       setFixture(null); 
       setTorneo(null);   
+      setGroupScheduleSettings({});
       toast({ title: "Torneo Borrado", description: "El torneo activo ha sido eliminado." });
     }
     setIsDeleteDialogOpen(false);
@@ -706,7 +723,7 @@ export default function ActiveTournamentPage() {
     const categoryFixture = newFixture[currentEditingMatch.categoryId!];
     if (!categoryFixture) return;
 
-    if (currentEditingMatch.groupOriginId) {
+    if (currentEditingMatch.groupOriginId) { // It's a group match
         const group = categoryFixture.groups.find(g => g.id === currentEditingMatch.groupOriginId);
         if (group) {
             const matchIndex = group.matches.findIndex(m => m.id === currentEditingMatch.id);
@@ -715,7 +732,7 @@ export default function ActiveTournamentPage() {
                 
                 const oldScore1 = matchToUpdate.score1;
                 const oldScore2 = matchToUpdate.score2;
-                const wasPending = matchToUpdate.status === 'pending';
+                const wasPending = matchToUpdate.status === 'pending' || (!matchToUpdate.score1 && !matchToUpdate.score2) ;
 
                 matchToUpdate.score1 = score1;
                 matchToUpdate.score2 = score2;
@@ -727,6 +744,7 @@ export default function ActiveTournamentPage() {
                 const standing2 = group.standings.find(s => s.duplaId === matchToUpdate.dupla2.id);
 
                 if (standing1 && standing2) {
+                    // Revert previous result if it was not pending
                     if (!wasPending && oldScore1 !== undefined && oldScore2 !== undefined) {
                         standing1.pf -= oldScore1;
                         standing1.pc -= oldScore2;
@@ -735,26 +753,20 @@ export default function ActiveTournamentPage() {
 
                         if (oldScore1 > oldScore2) { 
                             standing1.pg -= 1;
-                            standing1.pts -= 2;
+                            standing1.pts -= 2; // Assuming 2 points for a win
                             standing2.pp -= 1;
                         } else if (oldScore2 > oldScore1) { 
                             standing2.pg -= 1;
                             standing2.pts -= 2;
                             standing1.pp -= 1;
                         }
-                        
-                        if (!wasPending) { 
-                              standing1.pj -=1; 
-                              standing2.pj -=1;
-                        }
-                    }
-                    
-                    if(wasPending){
+                        // PJ was already counted, so no change if just editing score
+                    } else if (wasPending) { // Only add PJ if it was truly a new result
                         standing1.pj += 1;
                         standing2.pj += 1;
                     }
-
-
+                    
+                    // Apply new result
                     standing1.pf += score1;
                     standing1.pc += score2;
                     standing2.pf += score2;
@@ -762,7 +774,7 @@ export default function ActiveTournamentPage() {
 
                     if (score1 > score2) { 
                         standing1.pg += 1;
-                        standing1.pts += 2;
+                        standing1.pts += 2; // Assuming 2 points for a win
                         standing2.pp += 1;
                     } else { 
                         standing2.pg += 1;
@@ -773,7 +785,7 @@ export default function ActiveTournamentPage() {
             }
         }
     } 
-    else if (categoryFixture.playoffMatches) {
+    else if (categoryFixture.playoffMatches && (currentEditingMatch as PlayoffMatch).stage) { // It's a playoff match
         const matchIndex = categoryFixture.playoffMatches.findIndex(m => m.id === currentEditingMatch.id);
         if (matchIndex !== -1) {
             const matchToUpdate = categoryFixture.playoffMatches[matchIndex];
@@ -783,6 +795,7 @@ export default function ActiveTournamentPage() {
             matchToUpdate.winnerId = score1 > score2 ? matchToUpdate.dupla1.id : matchToUpdate.dupla2.id;
             matchFound = true;
             
+            // Update participants of Final and Third Place if a Semifinal result changed
             if (matchToUpdate.stage === 'semifinal') {
                 const finalMatch = categoryFixture.playoffMatches.find(m => m.stage === 'final');
                 const thirdPlaceMatch = categoryFixture.playoffMatches.find(m => m.stage === 'tercer_puesto');
@@ -790,11 +803,12 @@ export default function ActiveTournamentPage() {
                 if (finalMatch && thirdPlaceMatch) {
                     const winnerDupla = matchToUpdate.winnerId === matchToUpdate.dupla1.id ? matchToUpdate.dupla1 : matchToUpdate.dupla2;
                     const loserDupla = matchToUpdate.winnerId === matchToUpdate.dupla1.id ? matchToUpdate.dupla2 : matchToUpdate.dupla1;
-
-                    if (matchToUpdate.id.endsWith('SF1')) {
+                    
+                    // Check if SF1 or SF2 to correctly place winner/loser
+                    if (matchToUpdate.id.endsWith('SF1')) { // Winner G_A vs RU_G_B
                         finalMatch.dupla1 = winnerDupla;
                         thirdPlaceMatch.dupla1 = loserDupla;
-                    } else if (matchToUpdate.id.endsWith('SF2')) {
+                    } else if (matchToUpdate.id.endsWith('SF2')) { // Winner G_B vs RU_G_A
                         finalMatch.dupla2 = winnerDupla;
                         thirdPlaceMatch.dupla2 = loserDupla;
                     }
@@ -816,6 +830,173 @@ export default function ActiveTournamentPage() {
     setCurrentEditingMatch(null);
     resultForm.reset();
   };
+
+  const handleOpenPlayoffScheduler = (categoryId: string) => {
+    if (!fixture || !torneo) return;
+    const catFixture = fixture[categoryId];
+    const catData = torneo.categoriesWithDuplas.find(c => c.id === categoryId);
+
+    if (!catFixture || !catData || !catFixture.playoffMatches || catFixture.playoffMatches.length === 0) {
+        toast({ title: "Error", description: "Playoffs no aplican o no están definidos para esta categoría.", variant: "destructive" });
+        return;
+    }
+
+    let allGroupMatchesCompleted = true;
+    if (catFixture.groups.length > 0) { // Only check if there are groups
+      for (const group of catFixture.groups) {
+          if (group.matches.some(m => m.status !== 'completed')) {
+              allGroupMatchesCompleted = false;
+              break;
+          }
+      }
+      if (!allGroupMatchesCompleted) {
+          toast({ title: "Acción Requerida", description: "Todos los partidos de grupo de esta categoría deben estar completados y con resultados para programar playoffs.", variant: "warning" });
+          return;
+      }
+    }
+
+
+    setCategoryForPlayoffScheduling(catData);
+    // Reset to defaults or load saved settings for this category if implemented
+    setPlayoffSchedulingSettings({ breakDuration: "30", defaultMatchDuration: matchDurationGlobal?.toString() || "60" });
+    setIsPlayoffSchedulerDialogOpen(true);
+  };
+
+const handleConfirmPlayoffSchedule = () => {
+    if (!fixture || !torneo || !categoryForPlayoffScheduling) {
+        toast({ title: "Error", description: "Faltan datos para programar los playoffs.", variant: "destructive" });
+        return;
+    }
+
+    const categoryId = categoryForPlayoffScheduling.id;
+    const newFixture = JSON.parse(JSON.stringify(fixture)) as FixtureData;
+    const catFixture = newFixture[categoryId];
+
+    if (!catFixture || !catFixture.groups || !catFixture.playoffMatches) {
+        toast({ title: "Error", description: "Datos de fixture incompletos.", variant: "destructive" });
+        return;
+    }
+    
+    const groupA = catFixture.groups.find(g => g.name.toLowerCase().includes("grupo a")) || catFixture.groups[0];
+    const groupB = catFixture.groups.length > 1 ? (catFixture.groups.find(g => g.name.toLowerCase().includes("grupo b")) || catFixture.groups[1]) : groupA; // If only one group, B is same as A for court fallback
+
+    if (!groupA) { // groupB can be same as groupA if only one group
+        toast({ title: "Error", description: "No se pudieron identificar los grupos de referencia para los playoffs.", variant: "destructive" });
+        return;
+    }
+
+    const sortedStandingsA = [...groupA.standings].sort((a, b) => b.pts - a.pts || (b.pf - b.pc) - (a.pf - a.pc) || b.pf - a.pf);
+    const sortedStandingsB = groupB ? [...groupB.standings].sort((a, b) => b.pts - a.pts || (b.pf - b.pc) - (a.pf - a.pc) || b.pf - a.pf) : sortedStandingsA;
+
+
+    const winnerA = groupA.duplas.find(d => d.id === sortedStandingsA[0]?.duplaId);
+    const runnerUpA = groupA.duplas.find(d => d.id === sortedStandingsA[1]?.duplaId);
+    const winnerB = groupB.duplas.find(d => d.id === sortedStandingsB[0]?.duplaId);
+    const runnerUpB = groupB.duplas.find(d => d.id === sortedStandingsB[1]?.duplaId);
+
+    if (!winnerA || !runnerUpA || !winnerB || !runnerUpB) {
+        toast({ title: "Error de Clasificación", description: "No se pudieron determinar todos los clasificados. Asegúrate que los grupos tengan resultados y al menos 2 duplas.", variant: "destructive"});
+        return;
+    }
+    
+    const sf1Match = catFixture.playoffMatches.find(m => m.id.endsWith('-SF1'));
+    const sf2Match = catFixture.playoffMatches.find(m => m.id.endsWith('-SF2'));
+    const finalMatch = catFixture.playoffMatches.find(m => m.stage === 'final');
+    const thirdPlaceMatch = catFixture.playoffMatches.find(m => m.stage === 'tercer_puesto');
+
+    if (sf1Match) { sf1Match.dupla1 = winnerA; sf1Match.dupla2 = runnerUpB; } else { toast({title:"Error", description:"SF1 no encontrada"}); return; }
+    if (sf2Match) { sf2Match.dupla1 = winnerB; sf2Match.dupla2 = runnerUpA; } else { toast({title:"Error", description:"SF2 no encontrada"}); return; }
+    // Final and TP duplas will be set by handleSaveResult after SFs are played
+
+    let lastRelevantGroupMatchEndTime = new Date(0);
+    catFixture.groups.forEach(group => {
+        if (!group.groupStartTime || !group.groupMatchDuration) return;
+        const groupBaseDate = torneo.date ? new Date(torneo.date) : new Date();
+        let groupCurrentTime = parse(group.groupStartTime, "HH:mm", groupBaseDate);
+
+        if(isValid(groupCurrentTime)) {
+            group.matches.forEach(match => {
+                 if (match.time) { // Only consider matches that have been scheduled within the group
+                    const matchStartTime = parse(match.time, "HH:mm", groupBaseDate);
+                    if (isValid(matchStartTime)) {
+                        const matchEndTime = addMinutes(matchStartTime, group.groupMatchDuration!);
+                        if (matchEndTime > lastRelevantGroupMatchEndTime) {
+                            lastRelevantGroupMatchEndTime = matchEndTime;
+                        }
+                    }
+                 } else { // This indicates an issue if we reached here.
+                    console.warn(`Match ${match.id} in group ${group.name} is unscheduled during playoff calculation.`);
+                 }
+            });
+        }
+    });
+
+    if (lastRelevantGroupMatchEndTime.getTime() === new Date(0).getTime() && catFixture.groups.length > 0) {
+        toast({ title: "Advertencia", description: "No se pudo determinar la hora de finalización de los partidos de grupo. Los playoffs comenzarán desde la hora general del torneo.", variant: "warning" });
+        const [generalHours, generalMinutes] = (torneo.time || "09:00").split(':').map(Number);
+        lastRelevantGroupMatchEndTime = setMinutes(setHours(new Date(torneo.date), generalHours), generalMinutes);
+    } else if (catFixture.groups.length === 0) { // No groups, playoffs start from tournament time
+        const [generalHours, generalMinutes] = (torneo.time || "09:00").split(':').map(Number);
+        lastRelevantGroupMatchEndTime = setMinutes(setHours(new Date(torneo.date), generalHours), generalMinutes);
+    }
+
+
+    const breakMinutes = parseInt(playoffSchedulingSettings.breakDuration, 10);
+    const playoffMatchDuration = parseInt(playoffSchedulingSettings.defaultMatchDuration, 10);
+
+    // --- Schedule Semifinals ---
+    let semiFinalsStartTime = addMinutes(lastRelevantGroupMatchEndTime, breakMinutes);
+    
+    const courtSf1 = groupA.groupAssignedCourt || "Cancha 1";
+    const courtSf2 = (groupB && groupB.groupAssignedCourt && groupB.groupAssignedCourt !== groupA.groupAssignedCourt) 
+                     ? groupB.groupAssignedCourt 
+                     : (groupA.groupAssignedCourt === "Cancha 1" ? "Cancha 2" : "Cancha 1");
+
+
+    sf1Match.time = format(semiFinalsStartTime, "HH:mm");
+    sf1Match.court = courtSf1;
+    const sf1EndTime = addMinutes(semiFinalsStartTime, playoffMatchDuration);
+
+    if (courtSf1 === courtSf2) { // Sequential on same court
+        sf2Match.time = format(sf1EndTime, "HH:mm");
+    } else { // Parallel on different courts
+        sf2Match.time = format(semiFinalsStartTime, "HH:mm");
+    }
+    sf2Match.court = courtSf2;
+    const sf2ParsedStartTime = parse(sf2Match.time, "HH:mm", new Date(torneo.date));
+    const sf2EndTime = addMinutes(sf2ParsedStartTime, playoffMatchDuration);
+
+    const latestSemiFinalEndTime = sf1EndTime > sf2EndTime ? sf1EndTime : sf2EndTime;
+
+    // --- Schedule Final and Third Place ---
+    let finalRoundStartTime = addMinutes(latestSemiFinalEndTime, breakMinutes);
+
+    const courtFinal = groupA.groupAssignedCourt || "Cancha 1"; // Reuse Group A's court for final
+    const courtThirdPlace = (groupB && groupB.groupAssignedCourt && groupB.groupAssignedCourt !== groupA.groupAssignedCourt)
+                          ? groupB.groupAssignedCourt
+                          : (groupA.groupAssignedCourt === "Cancha 1" ? "Cancha 2" : "Cancha 1");
+
+
+    if (finalMatch) {
+        finalMatch.time = format(finalRoundStartTime, "HH:mm");
+        finalMatch.court = courtFinal;
+    }
+    const finalEndTime = addMinutes(finalRoundStartTime, playoffMatchDuration);
+
+    if (thirdPlaceMatch) {
+        if (courtFinal === courtThirdPlace) { // Sequential
+            thirdPlaceMatch.time = format(finalEndTime, "HH:mm");
+        } else { // Parallel
+            thirdPlaceMatch.time = format(finalRoundStartTime, "HH:mm");
+        }
+        thirdPlaceMatch.court = courtThirdPlace;
+    }
+    
+    setFixture(newFixture);
+    sessionStorage.setItem(`fixture_${torneo.tournamentName}`, JSON.stringify(newFixture));
+    toast({ title: "Playoffs Programados", description: `Playoffs para ${categoryForPlayoffScheduling.type} - ${categoryForPlayoffScheduling.level} programados.` });
+    setIsPlayoffSchedulerDialogOpen(false);
+};
 
 
   if (isLoading) {
@@ -1008,7 +1189,7 @@ export default function ActiveTournamentPage() {
         <Card className="w-full max-w-4xl mb-8 shadow-lg">
             <CardHeader>
                 <CardTitle className="text-2xl flex items-center"><TrophyIcon className="mr-2 h-6 w-6 text-primary" /> Planilla del Torneo</CardTitle>
-                <CardDescription>Define la configuración para cada grupo y programa sus partidos.</CardDescription>
+                <CardDescription>Define la configuración para cada grupo y programa sus partidos. Luego programa los playoffs.</CardDescription>
             </CardHeader>
             <CardContent>
                   <Tabs defaultValue={Object.keys(fixture).find(key => fixture[key].groups.length > 0 || (fixture[key].playoffMatches && fixture[key].playoffMatches!.length > 0)) || Object.keys(fixture)[0]} className="w-full">
@@ -1148,8 +1329,22 @@ export default function ActiveTournamentPage() {
                                 <TabsContent value="playoffs">
                                     {catFixture.playoffMatches && catFixture.playoffMatches.length > 0 ? (
                                         <div className="mb-6">
-                                            <h4 className="text-lg font-semibold text-primary mb-2">Fase de Playoffs</h4>
-                                            <p className="text-sm text-muted-foreground mb-3">Los playoffs se programan manualmente después de que los grupos finalicen.</p>
+                                            <div className="flex justify-between items-center mb-3">
+                                                <h4 className="text-lg font-semibold text-primary">Fase de Playoffs</h4>
+                                                <Button 
+                                                    onClick={() => handleOpenPlayoffScheduler(catFixture.categoryId)}
+                                                    disabled={!catFixture.groups.every(g => g.matches.every(m => m.status === 'completed')) && catFixture.groups.length > 0}
+                                                    size="sm"
+                                                >
+                                                    <CalendarIconLucide className="mr-2 h-4 w-4" /> Programar Playoffs
+                                                </Button>
+                                            </div>
+                                            <p className="text-sm text-muted-foreground mb-3">
+                                                {catFixture.groups.length === 0 || catFixture.groups.every(g => g.matches.every(m => m.status === 'completed')) 
+                                                    ? "Define la configuración y programa los horarios y canchas para los playoffs." 
+                                                    : "Completa todos los partidos de grupo y registra sus resultados para poder programar los playoffs."
+                                                }
+                                            </p>
                                             <ul className="space-y-2">
                                                 {catFixture.playoffMatches.sort((a,b) => {
                                                     const stageOrder = (stage: PlayoffMatch['stage']) => {
@@ -1161,7 +1356,6 @@ export default function ActiveTournamentPage() {
                                                     if (stageOrder(a.stage) !== stageOrder(b.stage)) {
                                                         return stageOrder(a.stage) - stageOrder(b.stage);
                                                     }
-                                                    // Fallback sort if needed, though time/court are TBD for playoffs now
                                                     return (a.time || "99:99").localeCompare(b.time || "99:99") || (a.court || "Z99").toString().localeCompare((b.court || "Z99").toString());
                                                 }).map(match => (
                                                     <li key={match.id} className="p-3 border rounded-md bg-secondary/20 text-sm">
@@ -1181,6 +1375,7 @@ export default function ActiveTournamentPage() {
                                                                 setCurrentEditingMatch({ ...match, categoryId: catFixture.categoryId });
                                                                 setIsResultModalOpen(true);
                                                             }}
+                                                            disabled={match.dupla1.id.startsWith('placeholder-') || match.dupla2.id.startsWith('placeholder-')}
                                                           >
                                                             <Edit3 className="mr-1 h-3 w-3"/>{match.status === 'completed' ? 'Editar Resultado' : 'Ingresar Resultado'}
                                                           </Button>
@@ -1189,7 +1384,7 @@ export default function ActiveTournamentPage() {
                                             </ul>
                                         </div>
                                     ) : (
-                                        <p className="text-muted-foreground text-center py-3">La fase de playoffs no aplica o no ha sido generada para esta categoría (requiere 2 grupos con al menos 2 duplas c/u para la estructura actual).</p>
+                                        <p className="text-muted-foreground text-center py-3">La fase de playoffs no aplica o no ha sido generada para esta categoría (requiere 2 grupos con al menos 2 duplas c/u y resultados para la estructura actual).</p>
                                     )}
                                 </TabsContent>
                             </Tabs>
@@ -1220,6 +1415,59 @@ export default function ActiveTournamentPage() {
         onSubmit={handleSaveResult}
         form={resultForm}
       />
+
+      <Dialog open={isPlayoffSchedulerDialogOpen} onOpenChange={setIsPlayoffSchedulerDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                  <DialogTitle>Programar Playoffs para {categoryForPlayoffScheduling?.type} - {categoryForPlayoffScheduling?.level}</DialogTitle>
+                  <DialogDescription>
+                      Define la duración de los partidos de playoff y el descanso entre rondas.
+                      Las canchas se intentarán asignar basadas en las canchas de los grupos principales (A y B si existen).
+                      Asegúrate que todos los partidos de grupo de esta categoría estén completados.
+                  </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                  <div className="space-y-1">
+                      <Label htmlFor="playoffBreakDuration">Descanso entre Rondas de Playoff (minutos)</Label>
+                      <Select
+                          value={playoffSchedulingSettings.breakDuration}
+                          onValueChange={(value) => setPlayoffSchedulingSettings(prev => ({ ...prev, breakDuration: value }))}
+                      >
+                          <SelectTrigger id="playoffBreakDuration" aria-label="Duración del Descanso entre Rondas de Playoff">
+                              <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                              <SelectItem value="15">15 minutos</SelectItem>
+                              <SelectItem value="30">30 minutos</SelectItem>
+                              <SelectItem value="45">45 minutos</SelectItem>
+                              <SelectItem value="60">60 minutos</SelectItem>
+                          </SelectContent>
+                      </Select>
+                  </div>
+                  <div className="space-y-1">
+                      <Label htmlFor="playoffMatchDuration">Duración Partidos de Playoff (minutos)</Label>
+                      <Select
+                          value={playoffSchedulingSettings.defaultMatchDuration}
+                          onValueChange={(value) => setPlayoffSchedulingSettings(prev => ({ ...prev, defaultMatchDuration: value }))}
+                      >
+                          <SelectTrigger id="playoffMatchDuration" aria-label="Duración de Partidos de Playoff">
+                              <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                              <SelectItem value="30">30 minutos</SelectItem>
+                              <SelectItem value="45">45 minutos</SelectItem>
+                              <SelectItem value="60">60 minutos</SelectItem>
+                              <SelectItem value="90">90 minutos</SelectItem>
+                          </SelectContent>
+                      </Select>
+                  </div>
+              </div>
+              <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsPlayoffSchedulerDialogOpen(false)}>Cancelar</Button>
+                  <Button onClick={handleConfirmPlayoffSchedule}>Confirmar y Programar Playoffs</Button>
+              </DialogFooter>
+          </DialogContent>
+      </Dialog>
     </div>
   );
 }
