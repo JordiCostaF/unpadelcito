@@ -7,7 +7,7 @@ import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, C
 import React, { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import type { PlayerFormValues, CategoryFormValues } from '../random-tournament/page';
+import type { PlayerFormValues, CategoryFormValues } from '../random-tournament/page'; // PlayerFormValues here has RUT as required
 import { format, parse, addMinutes, setHours, setMinutes, isValid } from "date-fns";
 import { es } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
@@ -43,7 +43,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 
 interface Dupla {
   id: string;
-  jugadores: [PlayerFormValues, PlayerFormValues];
+  jugadores: [PlayerFormValues, PlayerFormValues]; // Uses PlayerFormValues from random-tournament
   nombre: string; 
 }
 
@@ -160,6 +160,7 @@ const generateDuplaId = (d: [PlayerFormValues, PlayerFormValues]): string => {
     console.error("Invalid dupla structure passed to generateDuplaId:", d);
     return `error-dupla-id-${Math.random().toString(36).substring(2, 9)}`;
   }
+  // PlayerFormValues expects rut to be a string.
   const p1Identifier = p1.rut || p1.name;
   const p2Identifier = p2.rut || p2.name;
 
@@ -377,39 +378,61 @@ export default function ActiveTournamentPage() {
         
         if (parsedTorneo && parsedTorneo.tournamentName && parsedTorneo.categoriesWithDuplas) {
           const transformedCategories = parsedTorneo.categoriesWithDuplas.map((cat: any) => {
-            const duplasTransformadas = (cat.duplas || []).map((duplaItem: unknown) => {
+            const duplasTransformadas = (cat.duplas || []).map((savedDuplaObject: any) => {
+              // savedDuplaObject is { id, jugadores: [PlayerFormValuesForActive, PlayerFormValuesForActive], nombre }
               if (
-                !Array.isArray(duplaItem) ||
-                duplaItem.length !== 2 ||
-                !duplaItem[0] || 
-                !duplaItem[1] ||
-                typeof duplaItem[0] !== 'object' || 
-                typeof duplaItem[1] !== 'object'
+                !savedDuplaObject ||
+                typeof savedDuplaObject !== 'object' ||
+                !Array.isArray(savedDuplaObject.jugadores) ||
+                savedDuplaObject.jugadores.length !== 2 ||
+                !savedDuplaObject.jugadores[0] ||
+                !savedDuplaObject.jugadores[1] ||
+                typeof savedDuplaObject.jugadores[0] !== 'object' ||
+                typeof savedDuplaObject.jugadores[1] !== 'object' ||
+                typeof savedDuplaObject.nombre !== 'string'
               ) {
-                console.warn('Skipping malformed duplaItem (not an array, not length 2, or missing player objects):', duplaItem);
+                console.warn('Skipping malformed savedDuplaObject:', savedDuplaObject);
                 return null;
               }
 
-              const p1 = duplaItem[0] as PlayerFormValues | undefined;
-              const p2 = duplaItem[1] as PlayerFormValues | undefined;
+              const p1Input = savedDuplaObject.jugadores[0];
+              const p2Input = savedDuplaObject.jugadores[1];
 
+              // Validate player data (name is essential, rut is for ID if present)
               if (
-                !p1 || !p2 || 
-                !(p1.rut || p1.name) || 
-                !(p2.rut || p2.name) || 
-                !p1.name ||             
-                !p2.name                
+                !p1Input || !p2Input ||
+                !(p1Input.rut || p1Input.name) || 
+                !(p2Input.rut || p2Input.name) ||
+                !p1Input.name ||             
+                !p2Input.name                
               ) {
-                console.warn('Skipping duplaItem with invalid player data (missing player, or missing rut/name for ID, or missing name for display):', duplaItem);
+                console.warn('Skipping dupla with invalid player data (name missing, or identifier missing):', savedDuplaObject);
                 return null;
               }
               
-              const validDuplaPlayers = [p1, p2] as [PlayerFormValues, PlayerFormValues];
+              // Adapt to PlayerFormValues structure used in this page (random-tournament type)
+              // Ensure required fields like 'rut' and 'position' are present.
+              const p1Active: PlayerFormValues = {
+                id: p1Input.id || crypto.randomUUID(),
+                name: p1Input.name,
+                rut: p1Input.rut || `TEMP-${p1Input.name.replace(/\s+/g, '').slice(0,10)}-${Math.random().toString(36).substring(2, 5)}`, // Ensure RUT is a string
+                position: p1Input.position || "ambos", // Default position
+                categoryId: p1Input.categoryId || cat.id,
+              };
+              const p2Active: PlayerFormValues = {
+                id: p2Input.id || crypto.randomUUID(),
+                name: p2Input.name,
+                rut: p2Input.rut || `TEMP-${p2Input.name.replace(/\s+/g, '').slice(0,10)}-${Math.random().toString(36).substring(2, 5)}`, // Ensure RUT is a string
+                position: p2Input.position || "ambos", // Default position
+                categoryId: p2Input.categoryId || cat.id,
+              };
+              
+              const validDuplaPlayers: [PlayerFormValues, PlayerFormValues] = [p1Active, p2Active];
 
               return {
-                id: generateDuplaId(validDuplaPlayers),
+                id: savedDuplaObject.id || generateDuplaId(validDuplaPlayers),
                 jugadores: validDuplaPlayers,
-                nombre: `${p1.name} / ${p2.name}`
+                nombre: savedDuplaObject.nombre
               };
             }).filter(Boolean); 
 
@@ -427,7 +450,6 @@ export default function ActiveTournamentPage() {
           if (storedFixture) {
             const parsedFixture = JSON.parse(storedFixture);
             setFixture(parsedFixture);
-            // Initialize groupScheduleSettings from loaded fixture
             const initialGroupSettings: GroupScheduleState = {};
             if (parsedFixture) {
               Object.values(parsedFixture).forEach((catFix: any) => {
@@ -655,7 +677,6 @@ export default function ActiveTournamentPage() {
     groupToSchedule.groupStartTime = groupStartTimeStr;
     groupToSchedule.groupMatchDuration = groupMatchDuration;
     
-    // Reset previous scheduling for this group's matches before re-scheduling
     groupToSchedule.matches.forEach(match => {
         match.time = undefined;
         match.court = undefined;
@@ -726,7 +747,7 @@ export default function ActiveTournamentPage() {
     const categoryFixture = newFixture[currentEditingMatch.categoryId!];
     if (!categoryFixture) return;
 
-    if (currentEditingMatch.groupOriginId) { // It's a group match
+    if (currentEditingMatch.groupOriginId) { 
         const group = categoryFixture.groups.find(g => g.id === currentEditingMatch.groupOriginId);
         if (group) {
             const matchIndex = group.matches.findIndex(m => m.id === currentEditingMatch.id);
@@ -787,7 +808,7 @@ export default function ActiveTournamentPage() {
             }
         }
     } 
-    else if (categoryFixture.playoffMatches && (currentEditingMatch as PlayoffMatch).stage) { // It's a playoff match
+    else if (categoryFixture.playoffMatches && (currentEditingMatch as PlayoffMatch).stage) { 
         const matchIndex = categoryFixture.playoffMatches.findIndex(m => m.id === currentEditingMatch.id);
         if (matchIndex !== -1) {
             const matchToUpdate = categoryFixture.playoffMatches[matchIndex];
@@ -961,7 +982,7 @@ const handleConfirmPlayoffSchedule = () => {
     if(catFixture.groups.length > 0) {
         catFixture.groups.forEach(group => {
             if (!group.groupStartTime || !group.groupMatchDuration) return;
-            const groupBaseDate = torneo.date ? new Date(torneo.date) : new Date();
+            const groupBaseDate = torneo.date ? new Date(torneo.date) : new Date(); 
             
             group.matches.forEach(match => {
                  if (match.time && match.status === 'completed') { 
@@ -998,18 +1019,22 @@ const handleConfirmPlayoffSchedule = () => {
                      : (numCourtsGlobal && numCourtsGlobal >= 2 ? (courtSf1 === "1" ? "2" : "1") : (courtSf1 === "Cancha Principal" ? "Cancha Secundaria" : "Cancha Principal"));
 
 
-    sf1Match.time = format(semiFinalsStartTime, "HH:mm");
-    sf1Match.court = courtSf1;
+    if (sf1Match) {
+      sf1Match.time = format(semiFinalsStartTime, "HH:mm");
+      sf1Match.court = courtSf1;
+    }
     const sf1EndTime = addMinutes(semiFinalsStartTime, playoffMatchDuration);
 
-    if (courtSf1 === courtSf2) { 
-        sf2Match.time = format(sf1EndTime, "HH:mm");
-    } else { 
-        sf2Match.time = format(semiFinalsStartTime, "HH:mm");
+    if (sf2Match) {
+      if (courtSf1 === courtSf2) { 
+          sf2Match.time = format(sf1EndTime, "HH:mm");
+      } else { 
+          sf2Match.time = format(semiFinalsStartTime, "HH:mm");
+      }
+      sf2Match.court = courtSf2;
     }
-    sf2Match.court = courtSf2;
-    const sf2ParsedStartTime = parse(sf2Match.time, "HH:mm", new Date(torneo.date));
-    const sf2EndTime = addMinutes(sf2ParsedStartTime, playoffMatchDuration);
+    const sf2ParsedStartTime = sf2Match ? parse(sf2Match.time!, "HH:mm", new Date(torneo.date)) : new Date(0);
+    const sf2EndTime = sf2Match ? addMinutes(sf2ParsedStartTime, playoffMatchDuration) : new Date(0);
 
     const latestSemiFinalEndTime = sf1EndTime > sf2EndTime ? sf1EndTime : sf2EndTime;
 
