@@ -1518,6 +1518,7 @@ const handleConfirmPlayoffSchedule = () => {
                               <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
+                              <SelectItem value="0">0 minutos</SelectItem>
                               <SelectItem value="15">15 minutos</SelectItem>
                               <SelectItem value="30">30 minutos</SelectItem>
                               <SelectItem value="45">45 minutos</SelectItem>
