@@ -547,7 +547,7 @@ export default function ActiveTournamentPage() {
               const dedicatedCourtIdx = groupIndex;
               let currentGroupTimeSlot = categorySpecificStartTimeSlot;
               let unscheduledMatchesThisGroup = [...(group.rawMatches || [])];
-              const MAX_ATTEMPTS_DEDICATED = 1000; 
+              const MAX_ATTEMPTS_DEDICATED = (unscheduledMatchesThisGroup.length * 5) + 500; 
 
               while(unscheduledMatchesThisGroup.length > 0) {
                 let matchScheduledThisGroupTimeSlot = false;
@@ -778,7 +778,7 @@ export default function ActiveTournamentPage() {
                         const matchDateTimeStr = `${torneo.date.split('T')[0]}T${match.time}`; // Combine date and time correctly
                         const baseDateTimeStr = `${torneo.date.split('T')[0]}T${torneo.time}`;
                         const matchTimeObj = new Date(matchDateTimeStr);
-                        const baseTimeObj = new Date(baseTimeStr);
+                        const baseTimeObj = new Date(baseDateTimeStr);
                         if (!isNaN(matchTimeObj.getTime()) && !isNaN(baseTimeObj.getTime())) {
                              return Math.max(slot, Math.floor((matchTimeObj.getTime() - baseTimeObj.getTime()) / (matchDuration * 60000)));
                         }
@@ -835,7 +835,7 @@ export default function ActiveTournamentPage() {
         }
         
         let postSemiPlayoffStartTimeSlot = latestSemiFinalEndTimeSlot > -1 ? latestSemiFinalEndTimeSlot + 1 : basePlayoffStartTimeSlot;
-        const finalAndThirdPlaceMatches = [finalMatchDefinition, thirdPlaceMatchDefinition]; // Order doesn't strictly matter here for scheduling them after semis
+        const finalAndThirdPlaceMatches = [finalMatchDefinition, thirdPlaceMatchDefinition]; 
 
         for (const postSemiMatch of finalAndThirdPlaceMatches) {
             let scheduled = false;
@@ -866,7 +866,7 @@ export default function ActiveTournamentPage() {
                         lastPlayedTimeSlotByDupla.set(postSemiMatch.dupla2.id, timeSlotToTryForThisMatch);
                         currentOverallLatestTimeSlot = Math.max(currentOverallLatestTimeSlot, timeSlotToTryForThisMatch);
                         scheduled = true;
-                        postSemiPlayoffStartTimeSlot = timeSlotToTryForThisMatch + 1; 
+                        // Do NOT increment postSemiPlayoffStartTimeSlot here, allow parallel scheduling for the next match in finalAndThirdPlaceMatches
                         break;
                     }
                 }
