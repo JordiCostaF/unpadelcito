@@ -51,6 +51,8 @@ import {
   DialogTitle,
   DialogClose,
 } from "@/components/ui/dialog";
+import type { TorneoActivoData, CategoriaConDuplas as CategoriaConDuplasFromActive, PlayerFormValues as PlayerFormValuesFromActiveTournament } from '../active-tournament/page';
+
 
 const categoryOptions = {
   varones: ["1° Categoría", "2° Categoría", "3° Categoría", "4° Categoría", "5° Categoría", "6° Categoría"],
@@ -67,12 +69,11 @@ const categorySchema = z.object({
 
 const individualPlayerInDuplaSchema = z.object({
   name: z.string().min(2, { message: "Nombre del jugador debe tener al menos 2 caracteres." }),
-  rut: z.string().optional(), // RUT es opcional
-  // position: z.enum(["drive", "reves", "ambos"], { required_error: "Selecciona una posición." }), // Position removed
+  rut: z.string().optional(), 
 });
 
 const duplaSchema = z.object({
-  id: z.string().optional(), // Auto-generado
+  id: z.string().optional(), 
   player1: individualPlayerInDuplaSchema,
   player2: individualPlayerInDuplaSchema,
   categoryId: z.string().min(1, { message: "Debes asignar la dupla a una categoría." }),
@@ -92,16 +93,6 @@ export type DuplaFormValues = z.infer<typeof duplaSchema>;
 export type CategoryFormValues = z.infer<typeof categorySchema>;
 export type IndividualPlayerInDuplaValues = z.infer<typeof individualPlayerInDuplaSchema>;
 
-
-// Simulación de PlayerFormValues para compatibilidad con active-tournament
-// Se usarán valores por defecto o generados si no se proveen (ej. rut)
-export interface PlayerFormValuesForActive {
-  id: string;
-  name: string;
-  rut?: string;
-  position: "drive" | "reves" | "ambos"; // Still needed for active-tournament
-  categoryId: string;
-}
 
 const generateDuplaIdForActiveTournament = (p1Name?: string, p2Name?: string, p1Rut?: string, p2Rut?: string): string => {
   const p1Identifier = p1Rut || p1Name || "jugador1";
@@ -146,11 +137,11 @@ export default function TournamentPage() {
     },
   });
 
-  const duplaForm = useForm<Omit<DuplaFormValues, 'id'>>({ // id se genera al añadir
+  const duplaForm = useForm<Omit<DuplaFormValues, 'id'>>({ 
     resolver: zodResolver(duplaSchema.omit({id: true})),
     defaultValues: {
-      player1: { name: "" }, // Position removed
-      player2: { name: "" }, // Position removed
+      player1: { name: "" }, 
+      player2: { name: "" }, 
       categoryId: "",
     },
   });
@@ -165,8 +156,8 @@ export default function TournamentPage() {
   useEffect(() => {
     if (editingDupla) {
       editDuplaForm.reset({
-        player1: { name: editingDupla.player1.name, rut: editingDupla.player1.rut }, // Position removed
-        player2: { name: editingDupla.player2.name, rut: editingDupla.player2.rut }, // Position removed
+        player1: { name: editingDupla.player1.name, rut: editingDupla.player1.rut }, 
+        player2: { name: editingDupla.player2.name, rut: editingDupla.player2.rut }, 
         categoryId: editingDupla.categoryId,
       });
     }
@@ -196,7 +187,7 @@ export default function TournamentPage() {
     let categoryHasLessThanTwoDuplas = false;
     categories.forEach(cat => {
         const duplasInCategory = duplas.filter(d => d.categoryId === cat.id);
-        if (duplasInCategory.length > 0 && duplasInCategory.length < 2) { // Si hay duplas, pero menos de 2
+        if (duplasInCategory.length > 0 && duplasInCategory.length < 2) { 
             categoryHasLessThanTwoDuplas = true;
         }
     });
@@ -205,56 +196,75 @@ export default function TournamentPage() {
          toast({
           title: "Advertencia de Validación",
           description: "Una o más categorías tienen solo una dupla. Se necesitan al menos dos duplas por categoría para generar partidos. El torneo se creará, pero esas categorías no tendrán fixture.",
-          variant: "default", // warning-like
+          variant: "default", 
         });
     }
 
-    const torneoActivo = {
-      tournamentName,
-      date: date.toISOString(),
-      time,
-      place,
-      categoriesWithDuplas: categories.map(category => {
-        const duplasDeCategoria = duplas
-          .filter(d => d.categoryId === category.id)
-          .map(d => {
-            const p1Active: PlayerFormValuesForActive = {
-              id: crypto.randomUUID(),
-              name: d.player1.name,
-              rut: d.player1.rut || `TEMP-${d.player1.name.replace(/\s+/g, '')}`,
-              position: "ambos", // Default position for compatibility
-              categoryId: category.id,
-            };
-            const p2Active: PlayerFormValuesForActive = {
-              id: crypto.randomUUID(),
-              name: d.player2.name,
-              rut: d.player2.rut || `TEMP-${d.player2.name.replace(/\s+/g, '')}`,
-              position: "ambos", // Default position for compatibility
-              categoryId: category.id,
-            };
-            return {
-              id: generateDuplaIdForActiveTournament(p1Active.name, p2Active.name, p1Active.rut, p2Active.rut),
-              jugadores: [p1Active, p2Active] as [PlayerFormValuesForActive, PlayerFormValuesForActive],
-              nombre: `${d.player1.name} / ${d.player2.name}`
-            };
-          });
-        
-        return {
-          ...category, // type, level, id
-          duplas: duplasDeCategoria,
-          jugadoresSobrantes: [], // No aplica con duplas pre-formadas
-          numTotalJugadores: duplasDeCategoria.length * 2
-        };
-      }),
+    const categoriesWithDuplasOutput: CategoriaConDuplasFromActive[] = categories.map(category => {
+      const duplasDeCategoria = duplas
+        .filter(d => d.categoryId === category.id)
+        .map(d => {
+          const p1Active: PlayerFormValuesFromActiveTournament = {
+            id: crypto.randomUUID(),
+            name: d.player1.name,
+            rut: d.player1.rut || `TEMP-${d.player1.name.replace(/\s+/g, '')}-${Math.random().toString(36).substring(2,5)}`,
+            position: "ambos", 
+            categoryId: category.id,
+          };
+          const p2Active: PlayerFormValuesFromActiveTournament = {
+            id: crypto.randomUUID(),
+            name: d.player2.name,
+            rut: d.player2.rut || `TEMP-${d.player2.name.replace(/\s+/g, '')}-${Math.random().toString(36).substring(2,5)}`,
+            position: "ambos", 
+            categoryId: category.id,
+          };
+          return {
+            id: generateDuplaIdForActiveTournament(p1Active.name, p2Active.name, p1Active.rut, p2Active.rut),
+            jugadores: [p1Active, p2Active] as [PlayerFormValuesFromActiveTournament, PlayerFormValuesFromActiveTournament],
+            nombre: `${d.player1.name} / ${d.player2.name}`
+          };
+        });
+      
+      return {
+        ...category, 
+        duplas: duplasDeCategoria,
+        jugadoresSobrantes: [], 
+        numTotalJugadores: duplasDeCategoria.length * 2
+      };
+    });
+
+    const newTournamentData: TorneoActivoData = {
+        tournamentName,
+        date: date.toISOString(),
+        time,
+        place,
+        categoriesWithDuplas: categoriesWithDuplasOutput,
+        numCourts: form.getValues().duplas.length > 5 ? 4 : 2, // Example, can be adjusted
+        matchDuration: 60, // Default
     };
   
     try {
-      sessionStorage.setItem('torneoActivo', JSON.stringify(torneoActivo));
+      let listaTorneosActivos: TorneoActivoData[] = [];
+      const storedLista = sessionStorage.getItem('listaTorneosActivos');
+      if (storedLista) {
+        listaTorneosActivos = JSON.parse(storedLista);
+      }
+
+      const existingIndex = listaTorneosActivos.findIndex(t => t.tournamentName === newTournamentData.tournamentName);
+      if (existingIndex > -1) {
+        listaTorneosActivos[existingIndex] = newTournamentData;
+      } else {
+        listaTorneosActivos.push(newTournamentData);
+      }
+      
+      sessionStorage.setItem('listaTorneosActivos', JSON.stringify(listaTorneosActivos));
+      // sessionStorage.removeItem('torneoActivo'); 
+
       toast({
         title: "Torneo Registrado",
         description: "Serás redirigido a la página del torneo activo para generar el fixture.",
       });
-      router.push('/active-tournament');
+      router.push(`/active-tournament?tournamentName=${encodeURIComponent(newTournamentData.tournamentName)}`);
     } catch (error) {
       console.error("Error saving to sessionStorage:", error);
       toast({
@@ -284,8 +294,8 @@ export default function TournamentPage() {
   function handleAddDupla(duplaData: Omit<DuplaFormValues, 'id'>) {
     appendDupla({ ...duplaData, id: crypto.randomUUID() });
     duplaForm.reset({
-      player1: { name: "" }, // Position removed
-      player2: { name: "" }, // Position removed
+      player1: { name: "" }, 
+      player2: { name: "" }, 
       categoryId: duplaData.categoryId, 
     });
     toast({

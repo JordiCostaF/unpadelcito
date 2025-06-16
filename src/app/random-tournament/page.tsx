@@ -49,9 +49,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
+import type { TorneoActivoData, CategoriaConDuplas as CategoriaConDuplasFromActive } from '../active-tournament/page';
+
 
 const categoryOptions = {
   varones: ["1° Categoría", "2° Categoría", "3° Categoría", "4° Categoría", "5° Categoría", "6° Categoría"],
@@ -206,67 +207,96 @@ export default function RandomTournamentPage() {
        return;
    }
 
-    const torneoActivo = {
-      tournamentName,
-      date: date.toISOString(),
-      time,
-      place,
-      categoriesWithDuplas: categories.map(category => {
-        const playersInCategory = players.filter(p => p.categoryId === category.id);
-        
-        let drives = shuffleArray(playersInCategory.filter(p => p.position === 'drive'));
-        let reveses = shuffleArray(playersInCategory.filter(p => p.position === 'reves'));
-        let ambidiestros = shuffleArray(playersInCategory.filter(p => p.position === 'ambos'));
-  
-        const duplasRaw: PlayerFormValues[][] = [];
-        
-        while (reveses.length > 0 && drives.length > 0) {
-          duplasRaw.push([reveses.pop()!, drives.pop()!]);
-        }
-        while (reveses.length > 0 && ambidiestros.length > 0) {
-          duplasRaw.push([reveses.pop()!, ambidiestros.pop()!]);
-        }
-        while (drives.length > 0 && ambidiestros.length > 0) {
-          duplasRaw.push([drives.pop()!, ambidiestros.pop()!]);
-        }
-        while (ambidiestros.length >= 2) {
-          duplasRaw.push([ambidiestros.pop()!, ambidiestros.pop()!]);
-        }
-        while (reveses.length >= 2) {
-          duplasRaw.push([reveses.pop()!, reveses.pop()!]);
-        }
-        while (drives.length >= 2) {
-          duplasRaw.push([drives.pop()!, drives.pop()!]);
-        }
-        
-        const jugadoresSobrantes = [...drives, ...reveses, ...ambidiestros];
+    const categoriesWithDuplasOutput: CategoriaConDuplasFromActive[] = categories.map(category => {
+      const playersInCategory = players.filter(p => p.categoryId === category.id);
+      
+      let drives = shuffleArray(playersInCategory.filter(p => p.position === 'drive'));
+      let reveses = shuffleArray(playersInCategory.filter(p => p.position === 'reves'));
+      let ambidiestros = shuffleArray(playersInCategory.filter(p => p.position === 'ambos'));
 
-        const formattedDuplas = duplasRaw.map(duplaPair => {
-          const p1 = duplaPair[0];
-          const p2 = duplaPair[1];
-          return {
-            id: generateDuplaIdInternal([p1, p2]),
-            jugadores: [p1, p2] as [PlayerFormValues, PlayerFormValues],
-            nombre: `${p1.name} / ${p2.name}`
-          };
-        });
-        
+      const duplasRaw: PlayerFormValues[][] = [];
+      
+      while (reveses.length > 0 && drives.length > 0) {
+        duplasRaw.push([reveses.pop()!, drives.pop()!]);
+      }
+      while (reveses.length > 0 && ambidiestros.length > 0) {
+        duplasRaw.push([reveses.pop()!, ambidiestros.pop()!]);
+      }
+      while (drives.length > 0 && ambidiestros.length > 0) {
+        duplasRaw.push([drives.pop()!, ambidiestros.pop()!]);
+      }
+      while (ambidiestros.length >= 2) {
+        duplasRaw.push([ambidiestros.pop()!, ambidiestros.pop()!]);
+      }
+      while (reveses.length >= 2) {
+        duplasRaw.push([reveses.pop()!, reveses.pop()!]);
+      }
+      while (drives.length >= 2) {
+        duplasRaw.push([drives.pop()!, drives.pop()!]);
+      }
+      
+      const jugadoresSobrantes = [...drives, ...reveses, ...ambidiestros];
+
+      const formattedDuplas = duplasRaw.map(duplaPair => {
+        const p1 = duplaPair[0];
+        const p2 = duplaPair[1];
+        // Ensure p1 and p2 are valid PlayerFormValues before calling generateDuplaIdInternal
+        if (!p1 || !p2) {
+            console.error("Invalid dupla pair:", duplaPair);
+            // Handle error appropriately, maybe skip this dupla or assign a default ID
+            return {
+                id: `error-${crypto.randomUUID()}`,
+                jugadores: (duplaPair || [{},{}]) as [PlayerFormValues, PlayerFormValues], // Cast for type, handle potential undefined
+                nombre: "Error Dupla"
+            };
+        }
         return {
-          ...category,
-          duplas: formattedDuplas, // Use formatted duplas
-          jugadoresSobrantes,
-          numTotalJugadores: playersInCategory.length
+          id: generateDuplaIdInternal([p1, p2]),
+          jugadores: [p1, p2] as [PlayerFormValues, PlayerFormValues],
+          nombre: `${p1.name} / ${p2.name}`
         };
-      }),
+      }).filter(d => d.id !== `error-${crypto.randomUUID()}`);
+      
+      return {
+        ...category,
+        duplas: formattedDuplas,
+        jugadoresSobrantes,
+        numTotalJugadores: playersInCategory.length
+      };
+    });
+    
+    const newTournamentData: TorneoActivoData = {
+        tournamentName,
+        date: date.toISOString(),
+        time,
+        place,
+        categoriesWithDuplas: categoriesWithDuplasOutput,
+        numCourts: form.getValues().players.length > 10 ? 4 : 2, // Example, can be adjusted
+        matchDuration: 60, // Default
     };
   
     try {
-      sessionStorage.setItem('torneoActivo', JSON.stringify(torneoActivo));
+      let listaTorneosActivos: TorneoActivoData[] = [];
+      const storedLista = sessionStorage.getItem('listaTorneosActivos');
+      if (storedLista) {
+        listaTorneosActivos = JSON.parse(storedLista);
+      }
+
+      const existingIndex = listaTorneosActivos.findIndex(t => t.tournamentName === newTournamentData.tournamentName);
+      if (existingIndex > -1) {
+        listaTorneosActivos[existingIndex] = newTournamentData; // Update existing
+      } else {
+        listaTorneosActivos.push(newTournamentData); // Add new
+      }
+      
+      sessionStorage.setItem('listaTorneosActivos', JSON.stringify(listaTorneosActivos));
+      // sessionStorage.removeItem('torneoActivo'); // Remove old single key if it exists
+
       toast({
         title: "Torneo Registrado y Duplas Generadas",
         description: "Serás redirigido a la página del torneo activo.",
       });
-      router.push('/active-tournament');
+      router.push(`/active-tournament?tournamentName=${encodeURIComponent(newTournamentData.tournamentName)}`);
     } catch (error) {
       console.error("Error saving to sessionStorage:", error);
       toast({

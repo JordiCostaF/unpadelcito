@@ -3,11 +3,12 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power, Save, PlayCircle, Edit } from 'lucide-react';
-import React, { useEffect, useState, useCallback } from 'react';
+import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power, Save, PlayCircle, Edit, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
+import React, { useEffect, useState, useCallback, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import type { PlayerFormValues, CategoryFormValues } from '../random-tournament/page'; // PlayerFormValues here has RUT as required
+import type { PlayerFormValues as PlayerFormValuesFromRandom, CategoryFormValues as CategoryFormValuesFromRandom } from '../random-tournament/page';
 import { format, parse, addMinutes, setHours, setMinutes, isValid } from "date-fns";
 import { es } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
@@ -40,20 +41,24 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 
+// Renaming imported types to avoid conflicts if this page also defines its own PlayerFormValues
+export type PlayerFormValues = PlayerFormValuesFromRandom;
+export type CategoryFormValues = CategoryFormValuesFromRandom;
+
 
 interface Dupla {
   id: string;
-  jugadores: [PlayerFormValues, PlayerFormValues]; // Uses PlayerFormValues from random-tournament
+  jugadores: [PlayerFormValues, PlayerFormValues]; 
   nombre: string; 
 }
 
-interface CategoriaConDuplas extends CategoryFormValues {
+export interface CategoriaConDuplas extends CategoryFormValues {
   duplas: Dupla[];
   jugadoresSobrantes: PlayerFormValues[];
   numTotalJugadores: number;
 }
 
-interface TorneoActivoData {
+export interface TorneoActivoData {
   tournamentName: string;
   date: string; 
   time: string;
@@ -133,22 +138,15 @@ interface GroupScheduleState {
   };
 }
 
-// Helper function to compare standings based on multiple criteria
 function compareStandingsNumerically(sA: Standing, sB: Standing): number {
-  // 1. Points (descending)
   if (sA.pts !== sB.pts) return sB.pts - sA.pts;
-  // 2. Matches Won (PG) (descending)
   if (sA.pg !== sB.pg) return sB.pg - sA.pg;
-  // 3. Point Difference (PF - PC) (descending)
   const diffA = sA.pf - sA.pc;
   const diffB = sB.pf - sB.pc;
   if (diffA !== diffB) return diffB - diffA;
-  // 4. Points For (PF) (descending)
   if (sA.pf !== sB.pf) return sB.pf - sA.pf;
-  // 5. Points Against (PC) (ascending)
   if (sA.pc !== sB.pc) return sA.pc - sB.pc;
-  
-  return 0; // Still tied on numeric criteria
+  return 0; 
 }
 
 
@@ -160,7 +158,6 @@ const generateDuplaId = (d: [PlayerFormValues, PlayerFormValues]): string => {
     console.error("Invalid dupla structure passed to generateDuplaId:", d);
     return `error-dupla-id-${Math.random().toString(36).substring(2, 9)}`;
   }
-  // PlayerFormValues expects rut to be a string.
   const p1Identifier = p1.rut || p1.name;
   const p2Identifier = p2.rut || p2.name;
 
@@ -338,9 +335,15 @@ function generateAndOrderGroupMatches(duplasInGroup: Dupla[], groupId: string): 
   }));
 }
 
+function ActiveTournamentPageComponent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tournamentNameToLoad = searchParams.get('tournamentName');
 
-export default function ActiveTournamentPage() {
   const [torneo, setTorneo] = useState<TorneoActivoData | null>(null);
+  const [listaTorneos, setListaTorneos] = useState<TorneoActivoData[]>([]);
+  const [currentTournamentIndex, setCurrentTournamentIndex] = useState<number>(-1);
+
   const [fixture, setFixture] = useState<FixtureData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [numCourtsGlobal, setNumCourtsGlobal] = useState<number | undefined>(2);
@@ -369,108 +372,104 @@ export default function ActiveTournamentPage() {
   });
 
 
-  const loadTournamentData = useCallback(() => {
+  const loadTournamentData = useCallback((nameToLoad?: string | null) => {
     setIsLoading(true);
     try {
-      const storedTorneo = sessionStorage.getItem('torneoActivo');
-      if (storedTorneo) {
-        const parsedTorneo = JSON.parse(storedTorneo) as TorneoActivoData; 
-        
-        if (parsedTorneo && parsedTorneo.tournamentName && parsedTorneo.categoriesWithDuplas) {
-          const transformedCategories = parsedTorneo.categoriesWithDuplas.map((cat: any) => {
+      const storedLista = sessionStorage.getItem('listaTorneosActivos');
+      let loadedLista: TorneoActivoData[] = [];
+      if (storedLista) {
+        loadedLista = JSON.parse(storedLista);
+        setListaTorneos(loadedLista);
+      }
+
+      let tournamentToDisplay: TorneoActivoData | null = null;
+      let tournamentIndex = -1;
+
+      if (nameToLoad && loadedLista.length > 0) {
+        tournamentIndex = loadedLista.findIndex(t => t.tournamentName === nameToLoad);
+        if (tournamentIndex > -1) {
+          tournamentToDisplay = loadedLista[tournamentIndex];
+        }
+      } else if (loadedLista.length > 0) {
+        tournamentIndex = 0; // Default to the first tournament if no name is specified
+        tournamentToDisplay = loadedLista[0];
+      }
+      
+      setCurrentTournamentIndex(tournamentIndex);
+
+      if (tournamentToDisplay) {
+        const parsedTorneo = tournamentToDisplay; // Already parsed from list
+         // Data transformation for duplas (if needed, similar to previous logic)
+        const transformedCategories = parsedTorneo.categoriesWithDuplas.map((cat: any) => {
             const duplasTransformadas = (cat.duplas || []).map((savedDuplaObject: any) => {
-              // savedDuplaObject is { id, jugadores: [PlayerFormValuesForActive, PlayerFormValuesForActive], nombre }
-              if (
-                !savedDuplaObject ||
-                typeof savedDuplaObject !== 'object' ||
-                !Array.isArray(savedDuplaObject.jugadores) ||
-                savedDuplaObject.jugadores.length !== 2 ||
-                !savedDuplaObject.jugadores[0] ||
-                !savedDuplaObject.jugadores[1] ||
-                typeof savedDuplaObject.jugadores[0] !== 'object' ||
-                typeof savedDuplaObject.jugadores[1] !== 'object' ||
-                typeof savedDuplaObject.nombre !== 'string'
-              ) {
-                console.warn('Skipping malformed savedDuplaObject:', savedDuplaObject);
-                return null;
-              }
+                if (
+                    !savedDuplaObject || typeof savedDuplaObject !== 'object' ||
+                    !Array.isArray(savedDuplaObject.jugadores) || savedDuplaObject.jugadores.length !== 2 ||
+                    !savedDuplaObject.jugadores[0] || !savedDuplaObject.jugadores[1] ||
+                    typeof savedDuplaObject.jugadores[0] !== 'object' || typeof savedDuplaObject.jugadores[1] !== 'object' ||
+                    typeof savedDuplaObject.nombre !== 'string'
+                ) {
+                    console.warn('Skipping malformed savedDuplaObject:', savedDuplaObject);
+                    return null;
+                }
 
-              const p1Input = savedDuplaObject.jugadores[0];
-              const p2Input = savedDuplaObject.jugadores[1];
+                const p1Input = savedDuplaObject.jugadores[0];
+                const p2Input = savedDuplaObject.jugadores[1];
 
-              // Validate player data (name is essential, rut is for ID if present)
-              if (
-                !p1Input || !p2Input ||
-                !(p1Input.rut || p1Input.name) || 
-                !(p2Input.rut || p2Input.name) ||
-                !p1Input.name ||             
-                !p2Input.name                
-              ) {
-                console.warn('Skipping dupla with invalid player data (name missing, or identifier missing):', savedDuplaObject);
-                return null;
-              }
-              
-              // Adapt to PlayerFormValues structure used in this page (random-tournament type)
-              // Ensure required fields like 'rut' and 'position' are present.
-              const p1Active: PlayerFormValues = {
-                id: p1Input.id || crypto.randomUUID(),
-                name: p1Input.name,
-                rut: p1Input.rut || `TEMP-${p1Input.name.replace(/\s+/g, '').slice(0,10)}-${Math.random().toString(36).substring(2, 5)}`, // Ensure RUT is a string
-                position: p1Input.position || "ambos", // Default position
-                categoryId: p1Input.categoryId || cat.id,
-              };
-              const p2Active: PlayerFormValues = {
-                id: p2Input.id || crypto.randomUUID(),
-                name: p2Input.name,
-                rut: p2Input.rut || `TEMP-${p2Input.name.replace(/\s+/g, '').slice(0,10)}-${Math.random().toString(36).substring(2, 5)}`, // Ensure RUT is a string
-                position: p2Input.position || "ambos", // Default position
-                categoryId: p2Input.categoryId || cat.id,
-              };
-              
-              const validDuplaPlayers: [PlayerFormValues, PlayerFormValues] = [p1Active, p2Active];
+                if (!p1Input || !p2Input || !(p1Input.rut || p1Input.name) || !(p2Input.rut || p2Input.name) || !p1Input.name || !p2Input.name) {
+                    console.warn('Skipping dupla with invalid player data:', savedDuplaObject);
+                    return null;
+                }
+                
+                const p1Active: PlayerFormValues = {
+                    id: p1Input.id || crypto.randomUUID(),
+                    name: p1Input.name,
+                    rut: p1Input.rut || `TEMP-${p1Input.name.replace(/\s+/g, '').slice(0,10)}-${Math.random().toString(36).substring(2, 5)}`,
+                    position: p1Input.position || "ambos",
+                    categoryId: p1Input.categoryId || cat.id,
+                };
+                const p2Active: PlayerFormValues = {
+                    id: p2Input.id || crypto.randomUUID(),
+                    name: p2Input.name,
+                    rut: p2Input.rut || `TEMP-${p2Input.name.replace(/\s+/g, '').slice(0,10)}-${Math.random().toString(36).substring(2, 5)}`,
+                    position: p2Input.position || "ambos",
+                    categoryId: p2Input.categoryId || cat.id,
+                };
+                
+                const validDuplaPlayers: [PlayerFormValues, PlayerFormValues] = [p1Active, p2Active];
 
-              return {
-                id: savedDuplaObject.id || generateDuplaId(validDuplaPlayers),
-                jugadores: validDuplaPlayers,
-                nombre: savedDuplaObject.nombre
-              };
+                return {
+                    id: savedDuplaObject.id || generateDuplaId(validDuplaPlayers),
+                    jugadores: validDuplaPlayers,
+                    nombre: savedDuplaObject.nombre
+                };
             }).filter(Boolean); 
 
-            return {
-              ...cat,
-              duplas: duplasTransformadas as Dupla[],
-            };
-          });
-          
-          setTorneo({ ...parsedTorneo, categoriesWithDuplas: transformedCategories });
-          setNumCourtsGlobal(parsedTorneo.numCourts || 2);
-          setMatchDurationGlobal(parsedTorneo.matchDuration || 60);
-          
-          const storedFixture = sessionStorage.getItem(`fixture_${parsedTorneo.tournamentName}`);
-          if (storedFixture) {
-            const parsedFixture = JSON.parse(storedFixture);
-            setFixture(parsedFixture);
-            const initialGroupSettings: GroupScheduleState = {};
-            if (parsedFixture) {
-              Object.values(parsedFixture).forEach((catFix: any) => {
-                  (catFix.groups || []).forEach((group: Group) => {
-                      initialGroupSettings[group.id] = {
-                          court: group.groupAssignedCourt?.toString() || '1',
-                          startTime: group.groupStartTime || '09:00',
-                          duration: group.groupMatchDuration?.toString() || (parsedTorneo.matchDuration?.toString() || '60'),
-                      };
-                  });
-              });
-            }
-            setGroupScheduleSettings(initialGroupSettings);
+            return { ...cat, duplas: duplasTransformadas as Dupla[] };
+        });
 
-          } else {
-            setFixture(null);
-            setGroupScheduleSettings({});
+        setTorneo({ ...parsedTorneo, categoriesWithDuplas: transformedCategories });
+        setNumCourtsGlobal(parsedTorneo.numCourts || 2);
+        setMatchDurationGlobal(parsedTorneo.matchDuration || 60);
+        
+        const storedFixture = sessionStorage.getItem(`fixture_${parsedTorneo.tournamentName}`);
+        if (storedFixture) {
+          const parsedFixture = JSON.parse(storedFixture);
+          setFixture(parsedFixture);
+          const initialGroupSettings: GroupScheduleState = {};
+          if (parsedFixture) {
+            Object.values(parsedFixture).forEach((catFix: any) => {
+                (catFix.groups || []).forEach((group: Group) => {
+                    initialGroupSettings[group.id] = {
+                        court: group.groupAssignedCourt?.toString() || '1',
+                        startTime: group.groupStartTime || '09:00',
+                        duration: group.groupMatchDuration?.toString() || (parsedTorneo.matchDuration?.toString() || '60'),
+                    };
+                });
+            });
           }
-
+          setGroupScheduleSettings(initialGroupSettings);
         } else {
-          setTorneo(null);
           setFixture(null);
           setGroupScheduleSettings({});
         }
@@ -478,10 +477,13 @@ export default function ActiveTournamentPage() {
         setTorneo(null);
         setFixture(null);
         setGroupScheduleSettings({});
+        if (nameToLoad) {
+            toast({ title: "Torneo no encontrado", description: `No se encontró el torneo "${nameToLoad}".`, variant: "destructive" });
+        }
       }
     } catch (error) {
       console.error("Error reading or parsing sessionStorage:", error);
-      toast({ title: "Error de Carga", description: "No se pudieron cargar los datos del torneo. Intenta generar uno nuevo.", variant: "destructive" });
+      toast({ title: "Error de Carga", description: "No se pudieron cargar los datos del torneo.", variant: "destructive" });
       setTorneo(null);
       setFixture(null);
       setGroupScheduleSettings({});
@@ -490,8 +492,23 @@ export default function ActiveTournamentPage() {
   }, [toast]);
 
   useEffect(() => {
-    loadTournamentData();
-  }, [loadTournamentData]);
+    loadTournamentData(tournamentNameToLoad);
+  }, [loadTournamentData, tournamentNameToLoad]);
+
+  const navigateTournament = (direction: 'next' | 'prev') => {
+    if (listaTorneos.length === 0) return;
+    let newIndex = currentTournamentIndex;
+    if (direction === 'next') {
+      newIndex = (currentTournamentIndex + 1) % listaTorneos.length;
+    } else {
+      newIndex = (currentTournamentIndex - 1 + listaTorneos.length) % listaTorneos.length;
+    }
+    const newTournamentName = listaTorneos[newIndex]?.tournamentName;
+    if (newTournamentName) {
+      router.push(`/active-tournament?tournamentName=${encodeURIComponent(newTournamentName)}`);
+    }
+  };
+
 
  const handleGlobalTournamentSettingChange = (type: 'courts', value: string) => {
     if (!torneo) return;
@@ -510,7 +527,13 @@ export default function ActiveTournamentPage() {
     
     if (settingChanged) {
         setTorneo(updatedTorneoData);
-        sessionStorage.setItem('torneoActivo', JSON.stringify(updatedTorneoData));
+        // Update in listaTorneosActivos as well
+        const currentTournamentName = torneo.tournamentName;
+        const updatedList = listaTorneos.map(t => 
+            t.tournamentName === currentTournamentName ? updatedTorneoData : t
+        );
+        setListaTorneos(updatedList);
+        sessionStorage.setItem('listaTorneosActivos', JSON.stringify(updatedList));
         toast({ title: "Ajuste Informativo Guardado", description: `Se actualizó el número de canchas disponibles.` });
     }
   };
@@ -725,12 +748,25 @@ export default function ActiveTournamentPage() {
 
   const handleDeleteTournamentConfirm = () => {
     if (torneo) {
-      sessionStorage.removeItem(`fixture_${torneo.tournamentName}`);
-      sessionStorage.removeItem('torneoActivo');
+      const currentTournamentName = torneo.tournamentName;
+      sessionStorage.removeItem(`fixture_${currentTournamentName}`);
+      
+      const updatedList = listaTorneos.filter(t => t.tournamentName !== currentTournamentName);
+      setListaTorneos(updatedList);
+      sessionStorage.setItem('listaTorneosActivos', JSON.stringify(updatedList));
+      
       setFixture(null); 
       setTorneo(null);   
       setGroupScheduleSettings({});
-      toast({ title: "Torneo Borrado", description: "El torneo activo ha sido eliminado." });
+      setCurrentTournamentIndex(-1);
+      
+      toast({ title: "Torneo Borrado", description: `El torneo "${currentTournamentName}" ha sido eliminado.` });
+
+      if (updatedList.length > 0) {
+        router.push(`/active-tournament?tournamentName=${encodeURIComponent(updatedList[0].tournamentName)}`);
+      } else {
+        router.push('/active-tournament'); // Go to base page, will show no tournaments
+      }
     }
     setIsDeleteDialogOpen(false);
   };
@@ -1081,13 +1117,35 @@ const handleConfirmPlayoffSchedule = () => {
     return (
       <div className="container mx-auto flex flex-col items-center justify-center flex-1 py-12 px-4 md:px-6 text-center">
         <Info className="h-16 w-16 text-primary mb-6" />
-        <h1 className="text-3xl md:text-4xl font-bold text-primary mb-4">No hay Torneo Activo</h1>
+        <h1 className="text-3xl md:text-4xl font-bold text-primary mb-4">
+            {listaTorneos.length > 0 && !tournamentNameToLoad ? "Selecciona un Torneo" : "No hay Torneo Activo"}
+        </h1>
         <p className="text-md text-muted-foreground mb-6 max-w-md">
-          No se ha generado un torneo recientemente o los datos no pudieron cargarse.
+          {listaTorneos.length > 0 && !tournamentNameToLoad 
+            ? `Hay ${listaTorneos.length} torneo(s) activos. Navega entre ellos o crea uno nuevo.`
+            : "No se ha generado un torneo recientemente o los datos no pudieron cargarse."
+          }
         </p>
+        {listaTorneos.length > 0 && !tournamentNameToLoad && (
+             <div className="mb-6">
+                <h2 className="text-xl font-semibold mb-2">Torneos Disponibles:</h2>
+                <ul className="list-disc list-inside">
+                    {listaTorneos.map(t => (
+                        <li key={t.tournamentName}>
+                            <Link href={`/active-tournament?tournamentName=${encodeURIComponent(t.tournamentName)}`} className="text-primary hover:underline">
+                                {t.tournamentName}
+                            </Link>
+                        </li>
+                    ))}
+                </ul>
+            </div>
+        )}
         <div className="flex flex-col sm:flex-row gap-4">
             <Link href="/random-tournament" passHref>
               <Button variant="default" size="lg">Crear un Torneo Random</Button>
+            </Link>
+             <Link href="/tournament" passHref>
+              <Button variant="default" size="lg">Crear Torneo por Duplas</Button>
             </Link>
             <Link href="/" passHref>
               <Button variant="outline" size="lg"><Home className="mr-2 h-5 w-5" />Volver al Inicio</Button>
@@ -1104,9 +1162,9 @@ const handleConfirmPlayoffSchedule = () => {
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Estás seguro de borrar el torneo?</AlertDialogTitle>
+            <AlertDialogTitle>¿Estás seguro de borrar el torneo "{torneo.tournamentName}"?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. Se eliminarán todos los datos del torneo activo, incluyendo
+              Esta acción no se puede deshacer. Se eliminarán todos los datos de este torneo activo, incluyendo
               las duplas y el fixture generado.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1118,6 +1176,20 @@ const handleConfirmPlayoffSchedule = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+        
+      {listaTorneos.length > 1 && (
+        <div className="flex items-center justify-between w-full max-w-4xl mb-4">
+            <Button onClick={() => navigateTournament('prev')} variant="outline" size="sm" disabled={listaTorneos.length <=1}>
+                <ChevronLeft className="mr-1 h-4 w-4" /> Anterior
+            </Button>
+            <p className="text-sm text-muted-foreground">
+                Torneo {currentTournamentIndex + 1} de {listaTorneos.length}
+            </p>
+            <Button onClick={() => navigateTournament('next')} variant="outline" size="sm" disabled={listaTorneos.length <=1}>
+                Siguiente <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
+        </div>
+      )}
 
       <div className="flex items-center mb-8 text-center">
         <Activity className="h-10 w-10 md:h-12 md:w-12 text-primary mr-2 md:mr-3" />
@@ -1454,6 +1526,9 @@ const handleConfirmPlayoffSchedule = () => {
         <Link href="/random-tournament" passHref>
           <Button variant="outline" size="lg" className="text-base w-full sm:w-auto">Crear Nuevo Torneo Random</Button>
         </Link>
+         <Link href="/tournament" passHref>
+          <Button variant="outline" size="lg" className="text-base w-full sm:w-auto">Crear Nuevo Torneo por Duplas</Button>
+        </Link>
         <Link href="/" passHref>
           <Button variant="default" size="lg" className="text-base w-full sm:w-auto"><Home className="mr-2 h-5 w-5" />Volver al Inicio</Button>
         </Link>
@@ -1528,27 +1603,11 @@ const handleConfirmPlayoffSchedule = () => {
   );
 }
     
-
+export default function ActiveTournamentPage() {
+  return (
+    <Suspense fallback={<div className="container mx-auto flex flex-col items-center justify-center flex-1 py-12 px-4 md:px-6 text-center"><Activity className="h-16 w-16 text-primary mb-6 animate-spin" /><p className="text-lg text-muted-foreground">Cargando...</p></div>}>
+      <ActiveTournamentPageComponent />
+    </Suspense>
+  );
+}
       
-
-
-
-
-
-    
-
-
-
-    
-
-
-    
-
-    
-
-
-
-
-    
-
-    
