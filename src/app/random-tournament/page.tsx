@@ -98,6 +98,12 @@ function shuffleArray<T>(array: T[]): T[] {
   return newArray;
 }
 
+const generateDuplaIdInternal = (players: [PlayerFormValues, PlayerFormValues]): string => {
+  const p1Rut = players[0].rut;
+  const p2Rut = players[1].rut;
+  return [p1Rut, p2Rut].sort().join('-');
+};
+
 export default function RandomTournamentPage() {
   const { toast } = useToast();
   const router = useRouter();
@@ -200,7 +206,6 @@ export default function RandomTournamentPage() {
        return;
    }
 
-
     const torneoActivo = {
       tournamentName,
       date: date.toISOString(),
@@ -213,43 +218,42 @@ export default function RandomTournamentPage() {
         let reveses = shuffleArray(playersInCategory.filter(p => p.position === 'reves'));
         let ambidiestros = shuffleArray(playersInCategory.filter(p => p.position === 'ambos'));
   
-        const duplas: PlayerFormValues[][] = [];
+        const duplasRaw: PlayerFormValues[][] = [];
         
-        // Prioridad 1: Revés + Drive
         while (reveses.length > 0 && drives.length > 0) {
-          duplas.push([reveses.pop()!, drives.pop()!]);
+          duplasRaw.push([reveses.pop()!, drives.pop()!]);
         }
-        
-        // Prioridad 2: Revés + Ambos (Ambos juega Drive)
         while (reveses.length > 0 && ambidiestros.length > 0) {
-          duplas.push([reveses.pop()!, ambidiestros.pop()!]);
+          duplasRaw.push([reveses.pop()!, ambidiestros.pop()!]);
         }
-        
-        // Prioridad 3: Drive + Ambos (Ambos juega Revés)
         while (drives.length > 0 && ambidiestros.length > 0) {
-          duplas.push([drives.pop()!, ambidiestros.pop()!]);
+          duplasRaw.push([drives.pop()!, ambidiestros.pop()!]);
         }
-        
-        // Prioridad 4: Ambos + Ambos
         while (ambidiestros.length >= 2) {
-          duplas.push([ambidiestros.pop()!, ambidiestros.pop()!]);
+          duplasRaw.push([ambidiestros.pop()!, ambidiestros.pop()!]);
         }
-        
-        // Prioridad 5: Reves + Reves
         while (reveses.length >= 2) {
-          duplas.push([reveses.pop()!, reveses.pop()!]);
+          duplasRaw.push([reveses.pop()!, reveses.pop()!]);
         }
-        
-        // Prioridad 6: Drive + Drive
         while (drives.length >= 2) {
-          duplas.push([drives.pop()!, drives.pop()!]);
+          duplasRaw.push([drives.pop()!, drives.pop()!]);
         }
         
         const jugadoresSobrantes = [...drives, ...reveses, ...ambidiestros];
+
+        const formattedDuplas = duplasRaw.map(duplaPair => {
+          const p1 = duplaPair[0];
+          const p2 = duplaPair[1];
+          return {
+            id: generateDuplaIdInternal([p1, p2]),
+            jugadores: [p1, p2] as [PlayerFormValues, PlayerFormValues],
+            nombre: `${p1.name} / ${p2.name}`
+          };
+        });
         
         return {
           ...category,
-          duplas,
+          duplas: formattedDuplas, // Use formatted duplas
           jugadoresSobrantes,
           numTotalJugadores: playersInCategory.length
         };
@@ -355,7 +359,7 @@ export default function RandomTournamentPage() {
 
   const fillWithTestData = () => {
     form.reset({
-      tournamentName: "Torneo Masivo de Prueba",
+      tournamentName: "Torneo Masivo de Prueba - 80 Jugadores",
       date: new Date(),
       time: "09:00",
       place: "Mega Padel Center",
@@ -376,8 +380,8 @@ export default function RandomTournamentPage() {
 
     const newPlayersArray: PlayerFormValues[] = [];
     const positions: PlayerFormValues["position"][] = ["drive", "reves", "ambos"];
-    const totalPlayers = 80; // 4 categories * 20 players
-    const playersPerCategory = totalPlayers / testCategoriesArray.length; // Should be 20
+    const totalPlayers = 80; 
+    const playersPerCategory = totalPlayers / testCategoriesArray.length; 
 
     for (let i = 0; i < totalPlayers; i++) {
       const categoryIndex = Math.floor(i / playersPerCategory);
@@ -896,4 +900,3 @@ export default function RandomTournamentPage() {
     
 
     
-
