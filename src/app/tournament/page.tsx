@@ -140,8 +140,8 @@ export default function TournamentPage() {
   const duplaForm = useForm<Omit<DuplaFormValues, 'id'>>({ 
     resolver: zodResolver(duplaSchema.omit({id: true})),
     defaultValues: {
-      player1: { name: "" }, 
-      player2: { name: "" }, 
+      player1: { name: "", rut: "" }, 
+      player2: { name: "", rut: "" }, 
       categoryId: "",
     },
   });
@@ -258,7 +258,6 @@ export default function TournamentPage() {
       }
       
       sessionStorage.setItem('listaTorneosActivos', JSON.stringify(listaTorneosActivos));
-      // sessionStorage.removeItem('torneoActivo'); 
 
       toast({
         title: "Torneo Registrado",
@@ -294,8 +293,8 @@ export default function TournamentPage() {
   function handleAddDupla(duplaData: Omit<DuplaFormValues, 'id'>) {
     appendDupla({ ...duplaData, id: crypto.randomUUID() });
     duplaForm.reset({
-      player1: { name: "" }, 
-      player2: { name: "" }, 
+      player1: { name: "", rut: "" }, 
+      player2: { name: "", rut: "" }, 
       categoryId: duplaData.categoryId, 
     });
     toast({
@@ -353,13 +352,13 @@ export default function TournamentPage() {
     const testCategoriesArray: CategoryFormValues[] = [
       { id: crypto.randomUUID(), type: "varones", level: "3° Categoría" },
       { id: crypto.randomUUID(), type: "damas", level: "Categoría A" },
-      { id: crypto.randomUUID(), type: "mixto", level: "Mixto Elite" },
+      { id: crypto.randomUUID(), type: "mixto", level: "Mixto B" },
     ];
     
     replaceCategories(testCategoriesArray); 
 
     const newDuplasArray: DuplaFormValues[] = [];
-    const duplasPerCategory = 6; 
+    const duplasPerCategory = 10; 
 
     for (let catIdx = 0; catIdx < testCategoriesArray.length; catIdx++) {
         const categoryId = testCategoriesArray[catIdx].id;
@@ -398,7 +397,7 @@ export default function TournamentPage() {
 
       <div className="w-full max-w-3xl mb-4">
         <Button type="button" onClick={fillWithTestData} variant="outline" className="w-full md:w-auto">
-          <TestTube2 className="mr-2 h-4 w-4" /> Llenar con Datos de Prueba (Duplas)
+          <TestTube2 className="mr-2 h-4 w-4" /> Llenar con Datos de Prueba
         </Button>
       </div>
 
@@ -889,5 +888,3 @@ export default function TournamentPage() {
     </div>
   );
 }
-
-    
