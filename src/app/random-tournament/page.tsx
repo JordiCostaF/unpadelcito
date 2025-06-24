@@ -40,7 +40,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  CalendarIcon, Shuffle, Trash2, UserPlus, Users, Trophy, MapPin, Clock, FileText, XCircle, Layers, PlusCircle, Tag, TestTube2, Pencil
+  CalendarIcon, Shuffle, Trash2, UserPlus, Users, Trophy, MapPin, Clock, FileText, XCircle, Layers, PlusCircle, Tag, TestTube2, Pencil, Eraser
 } from "lucide-react";
 import {
   Dialog,
@@ -51,6 +51,17 @@ import {
   DialogTitle,
   DialogClose,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import type { TorneoActivoData, CategoriaConDuplas as CategoriaConDuplasFromActive } from '../active-tournament/page';
 
 
@@ -111,6 +122,8 @@ export default function RandomTournamentPage() {
   const [selectedCategoryTypeForNew, setSelectedCategoryTypeForNew] = useState<CategoryType | "">("");
   const [editingPlayer, setEditingPlayer] = useState<PlayerFormValues & { originalIndex: number } | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [playerPool, setPlayerPool] = useState<{name: string, rut: string}[]>([]);
+  const [isClearPoolDialogOpen, setIsClearPoolDialogOpen] = useState(false);
  
   const form = useForm<TournamentFormValues>({
     resolver: zodResolver(tournamentFormSchema),
@@ -157,6 +170,17 @@ export default function RandomTournamentPage() {
 
   const watchedCategories = form.watch("categories");
   const watchedPlayers = form.watch("players");
+
+  useEffect(() => {
+    try {
+      const storedPool = localStorage.getItem('unpadelcitoPlayerPool');
+      if (storedPool) {
+        setPlayerPool(JSON.parse(storedPool));
+      }
+    } catch (error) {
+      console.error("Error loading player pool from localStorage:", error);
+    }
+  }, []);
 
   useEffect(() => {
     if (editingPlayer) {
@@ -240,26 +264,20 @@ export default function RandomTournamentPage() {
       const formattedDuplas = duplasRaw.map(duplaPair => {
         const p1 = duplaPair[0];
         const p2 = duplaPair[1];
-        // Ensure p1 and p2 are valid PlayerFormValues before calling generateDuplaIdInternal
         if (!p1 || !p2) {
             console.error("Invalid dupla pair:", duplaPair);
-            // Handle error appropriately, maybe skip this dupla or assign a default ID
-            return {
-                id: `error-${crypto.randomUUID()}`,
-                jugadores: (duplaPair || [{},{}]) as [PlayerFormValues, PlayerFormValues], // Cast for type, handle potential undefined
-                nombre: "Error Dupla"
-            };
+            return null;
         }
         return {
           id: generateDuplaIdInternal([p1, p2]),
           jugadores: [p1, p2] as [PlayerFormValues, PlayerFormValues],
           nombre: `${p1.name} / ${p2.name}`
         };
-      }).filter(d => d.id !== `error-${crypto.randomUUID()}`);
+      }).filter(Boolean);
       
       return {
         ...category,
-        duplas: formattedDuplas,
+        duplas: formattedDuplas as any[],
         jugadoresSobrantes,
         numTotalJugadores: playersInCategory.length
       };
@@ -271,8 +289,8 @@ export default function RandomTournamentPage() {
         time,
         place,
         categoriesWithDuplas: categoriesWithDuplasOutput,
-        numCourts: form.getValues().players.length > 10 ? 4 : 2, // Example, can be adjusted
-        matchDuration: 60, // Default
+        numCourts: form.getValues().players.length > 10 ? 4 : 2,
+        matchDuration: 60,
     };
   
     try {
@@ -284,13 +302,12 @@ export default function RandomTournamentPage() {
 
       const existingIndex = listaTorneosActivos.findIndex(t => t.tournamentName === newTournamentData.tournamentName);
       if (existingIndex > -1) {
-        listaTorneosActivos[existingIndex] = newTournamentData; // Update existing
+        listaTorneosActivos[existingIndex] = newTournamentData;
       } else {
-        listaTorneosActivos.push(newTournamentData); // Add new
+        listaTorneosActivos.push(newTournamentData);
       }
       
       sessionStorage.setItem('listaTorneosActivos', JSON.stringify(listaTorneosActivos));
-      // sessionStorage.removeItem('torneoActivo'); // Remove old single key if it exists
 
       toast({
         title: "Torneo Registrado y Duplas Generadas",
@@ -308,21 +325,6 @@ export default function RandomTournamentPage() {
   }
 
 
-  function handleAddCategory(categoryData: Omit<CategoryFormValues, 'id'>) {
-    const categoryExists = categoryFields.some(c => c.type === categoryData.type && c.level === categoryData.level);
-    if (categoryExists) {
-      categoryForm.setError("level", { type: "manual", message: "Esta categoría (tipo y nivel) ya existe." });
-      return;
-    }
-    appendCategory({ ...categoryData, id: crypto.randomUUID() });
-    categoryForm.reset();
-    setSelectedCategoryTypeForNew("");
-    toast({
-      title: "Categoría Añadida",
-      description: `Categoría ${categoryData.type} - ${categoryData.level} añadida.`,
-    });
-  }
-
   function handleAddPlayer(playerData: PlayerFormValues) {
     const playerExistsInSameCategory = playerFields.some(p => p.rut === playerData.rut && p.categoryId === playerData.categoryId);
     if (playerExistsInSameCategory) {
@@ -330,10 +332,29 @@ export default function RandomTournamentPage() {
       return;
     }
     appendPlayer({ ...playerData, id: crypto.randomUUID() });
-    playerForm.reset();
+    playerForm.reset({ name: "", rut: "", position: undefined, categoryId: playerData.categoryId });
+
     toast({
       title: "Jugador Añadido",
       description: `${playerData.name} ha sido añadido al torneo.`,
+    });
+
+    setPlayerPool(prevPool => {
+      const isPlayerInPool = prevPool.some(p => p.rut === playerData.rut);
+      if (!isPlayerInPool) {
+        const newPool = [...prevPool, { name: playerData.name, rut: playerData.rut }];
+        try {
+          localStorage.setItem('unpadelcitoPlayerPool', JSON.stringify(newPool));
+           toast({
+             title: "Jugador Guardado",
+             description: `${playerData.name} se ha guardado en tu lista para futuros torneos.`,
+           });
+        } catch (error) {
+          console.error("Error saving player to localStorage:", error);
+        }
+        return newPool;
+      }
+      return prevPool;
     });
   }
   
@@ -375,7 +396,6 @@ export default function RandomTournamentPage() {
     setEditingPlayer(null);
   }
 
-
   const getCategoryName = (categoryId: string) => {
     const category = watchedCategories.find(c => c.id === categoryId);
     return category ? `${category.type} - ${category.level}` : "Categoría desconocida";
@@ -383,9 +403,37 @@ export default function RandomTournamentPage() {
   
   const getCategoryShortName = (category: CategoryFormValues) => {
     const type = category.type === "varones" ? "Var" : category.type === "damas" ? "Dam" : "Mix";
-    const levelShort = category.level.split(" ")[0]; // Toma la primera parte del nivel (ej. "1°" de "1° Categoría")
+    const levelShort = category.level.split(" ")[0];
     return `${type}. ${levelShort}`;
   }
+  
+  const handlePlayerNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const name = event.target.value;
+    playerForm.setValue("name", name);
+    const matchedPlayer = playerPool.find(p => p.name === name);
+    if (matchedPlayer) {
+      playerForm.setValue("rut", matchedPlayer.rut, { shouldValidate: true });
+    }
+  };
+  
+  const handleClearPlayerPoolConfirm = () => {
+    try {
+      localStorage.removeItem('unpadelcitoPlayerPool');
+      setPlayerPool([]);
+      toast({
+        title: "Lista de Jugadores Limpiada",
+        description: "Todos los jugadores guardados han sido eliminados de la memoria del navegador.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo limpiar la lista de jugadores guardados.",
+        variant: "destructive",
+      });
+    }
+    setIsClearPoolDialogOpen(false);
+  };
+
 
   const fillWithTestData = () => {
     form.reset({
@@ -435,9 +483,41 @@ export default function RandomTournamentPage() {
     });
   };
 
+  function handleAddCategory(categoryData: Omit<CategoryFormValues, 'id'>) {
+    const categoryExists = categoryFields.some(c => c.type === categoryData.type && c.level === categoryData.level);
+    if (categoryExists) {
+      categoryForm.setError("level", { type: "manual", message: "Esta categoría (tipo y nivel) ya existe." });
+      return;
+    }
+    appendCategory({ ...categoryData, id: crypto.randomUUID() });
+    categoryForm.reset();
+    setSelectedCategoryTypeForNew("");
+    toast({
+      title: "Categoría Añadida",
+      description: `Categoría ${categoryData.type} - ${categoryData.level} añadida.`,
+    });
+  }
+
 
   return (
     <div className="container mx-auto flex flex-col items-center flex-1 py-8 px-4 md:px-6">
+      <AlertDialog open={isClearPoolDialogOpen} onOpenChange={setIsClearPoolDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción eliminará permanentemente tu lista de jugadores guardados del navegador. No podrás deshacer esta acción.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleClearPlayerPoolConfirm} className="bg-destructive hover:bg-destructive/90">
+              Sí, Limpiar Lista
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="flex items-center mb-8">
         <Shuffle className="h-12 w-12 text-primary mr-3" />
         <h1 className="text-4xl md:text-5xl font-bold font-headline text-primary">
@@ -633,10 +713,6 @@ export default function RandomTournamentPage() {
                             });
                           }
                           removeCategory(index);
-                          // Opcional: remover jugadores de la categoría eliminada
-                          // const updatedPlayers = playerFields.filter(p => p.categoryId !== category.id);
-                          // replacePlayers(updatedPlayers);
-
                           toast({ title: "Categoría Eliminada", description: `Categoría ${category.type} - ${category.level} eliminada.`});
                         }}>
                           <Trash2 className="h-5 w-5 text-destructive" />
@@ -659,8 +735,13 @@ export default function RandomTournamentPage() {
 
           <Card className="shadow-lg">
             <CardHeader>
-              <CardTitle className="text-2xl flex items-center"><Users className="mr-2 h-6 w-6 text-primary" />Inscribir Jugadores</CardTitle>
-              <CardDescription>Añade los participantes del torneo a las categorías correspondientes.</CardDescription>
+              <div className="flex justify-between items-center">
+                 <CardTitle className="text-2xl flex items-center"><Users className="mr-2 h-6 w-6 text-primary" />Inscribir Jugadores</CardTitle>
+                 <Button variant="outline" size="sm" onClick={() => setIsClearPoolDialogOpen(true)} disabled={playerPool.length === 0}>
+                    <Eraser className="mr-2 h-4 w-4" /> Limpiar Jugadores Guardados
+                  </Button>
+              </div>
+              <CardDescription>Añade los participantes del torneo. Los nuevos jugadores se guardarán para futuros torneos.</CardDescription>
             </CardHeader>
             <CardContent>
               {watchedCategories.length === 0 ? (
@@ -675,10 +756,18 @@ export default function RandomTournamentPage() {
                         name="name"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Nombre del Jugador</FormLabel>
+                            <FormLabel>Nombre del Jugador (Escribe para buscar)</FormLabel>
                             <FormControl>
-                              <Input placeholder="Juan Pérez" {...field} />
+                              <Input 
+                                placeholder="Juan Pérez" 
+                                {...field} 
+                                onChange={handlePlayerNameChange}
+                                list="player-pool-list"
+                              />
                             </FormControl>
+                            <datalist id="player-pool-list">
+                              {playerPool.map(p => <option key={p.rut} value={p.name} />)}
+                            </datalist>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -927,6 +1016,3 @@ export default function RandomTournamentPage() {
     </div>
   );
 }
-    
-
-    
