@@ -139,13 +139,19 @@ interface GroupScheduleState {
 }
 
 function compareStandingsNumerically(sA: Standing, sB: Standing): number {
+  // 1. Puntos (descendente)
   if (sA.pts !== sB.pts) return sB.pts - sA.pts;
+  // 2. Partidos Ganados (descendente)
   if (sA.pg !== sB.pg) return sB.pg - sA.pg;
+  // 3. Diferencia de Puntos (descendente)
   const diffA = sA.pf - sA.pc;
   const diffB = sB.pf - sB.pc;
   if (diffA !== diffB) return diffB - diffA;
+  // 4. Puntos a Favor (descendente)
   if (sA.pf !== sB.pf) return sB.pf - sA.pf;
+  // 5. Puntos en Contra (ascendente, menos es mejor)
   if (sA.pc !== sB.pc) return sA.pc - sB.pc;
+  // Si todo es igual, se considera empate numérico
   return 0; 
 }
 
@@ -266,6 +272,7 @@ function ResultDialog({ isOpen, onClose, match, onSubmit, form }: ResultDialogPr
 
 
 function generateAndOrderGroupMatches(duplasInGroup: Dupla[], groupId: string): Match[] {
+  // 1. Generar todos los posibles partidos (usando combinatoria)
   const allPossibleMatchTuples: [Dupla, Dupla][] = [];
   for (let i = 0; i < duplasInGroup.length; i++) {
     for (let j = i + 1; j < duplasInGroup.length; j++) {
@@ -277,46 +284,42 @@ function generateAndOrderGroupMatches(duplasInGroup: Dupla[], groupId: string): 
     return [];
   }
 
+  // 2. Organizar los partidos evitando repeticiones seguidas, como en el ejemplo de Python
   const scheduledOrderTuples: [Dupla, Dupla][] = [];
   const remainingMatchTuples = [...allPossibleMatchTuples];
 
+  // Empezamos con el primer partido de la lista
   if (remainingMatchTuples.length > 0) {
     scheduledOrderTuples.push(remainingMatchTuples.shift()!);
   }
-  
+
   while (remainingMatchTuples.length > 0) {
-    let foundNextMatch = false;
-    if (scheduledOrderTuples.length === 0 && remainingMatchTuples.length > 0) { 
-        scheduledOrderTuples.push(remainingMatchTuples.shift()!);
-        continue; 
-    }
-    if(scheduledOrderTuples.length === 0) break; 
-
-
     const lastMatchTuple = scheduledOrderTuples[scheduledOrderTuples.length - 1];
-    const lastDupla1Id = lastMatchTuple[0].id;
-    const lastDupla2Id = lastMatchTuple[1].id;
+    const [lastDupla1, lastDupla2] = lastMatchTuple;
+    let foundNextMatch = false;
 
+    // Buscar el siguiente partido donde ninguna dupla se repita
     for (let i = 0; i < remainingMatchTuples.length; i++) {
       const currentCandidateTuple = remainingMatchTuples[i];
+      const [candidateDupla1, candidateDupla2] = currentCandidateTuple;
+
       if (
-        currentCandidateTuple[0].id !== lastDupla1Id &&
-        currentCandidateTuple[0].id !== lastDupla2Id &&
-        currentCandidateTuple[1].id !== lastDupla1Id &&
-        currentCandidateTuple[1].id !== lastDupla2Id
+        candidateDupla1.id !== lastDupla1.id &&
+        candidateDupla1.id !== lastDupla2.id &&
+        candidateDupla2.id !== lastDupla1.id &&
+        candidateDupla2.id !== lastDupla2.id
       ) {
+        // Se encontró un partido adecuado
         scheduledOrderTuples.push(remainingMatchTuples.splice(i, 1)[0]);
         foundNextMatch = true;
-        break;
+        break; // Salir del bucle for
       }
     }
 
+    // Si el bucle for terminó sin encontrar un partido (sin 'break')
     if (!foundNextMatch) {
-      if (remainingMatchTuples.length > 0) {
-        scheduledOrderTuples.push(remainingMatchTuples.shift()!);
-      } else {
-        break; 
-      }
+      // Se agrega el primer partido que quede en la lista de restantes
+      scheduledOrderTuples.push(remainingMatchTuples.shift()!);
     }
   }
 
@@ -326,12 +329,12 @@ function generateAndOrderGroupMatches(duplasInGroup: Dupla[], groupId: string): 
     dupla2: tuple[1],
     status: 'pending',
     groupOriginId: groupId,
-    court: undefined, 
-    time: undefined,  
+    court: undefined,
+    time: undefined,
     score1: undefined,
     score2: undefined,
     winnerId: undefined,
-    round: undefined, 
+    round: undefined,
   }));
 }
 
