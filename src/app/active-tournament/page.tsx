@@ -140,15 +140,15 @@ interface GroupScheduleState {
 
 function compareStandingsNumerically(sA: Standing, sB: Standing): number {
   // 1. Puntos (descendente)
-  if (sA.pts !== sB.pts) return sB.pts - sA.pts;
+  if (sA.pts !== sB.pts) return sB.pts - sB.pts;
   // 2. Partidos Ganados (descendente)
-  if (sA.pg !== sB.pg) return sB.pg - sA.pg;
+  if (sA.pg !== sB.pg) return sB.pg - sB.pg;
   // 3. Diferencia de Puntos (descendente)
   const diffA = sA.pf - sA.pc;
   const diffB = sB.pf - sB.pc;
   if (diffA !== diffB) return diffB - diffA;
   // 4. Puntos a Favor (descendente)
-  if (sA.pf !== sB.pf) return sB.pf - sA.pf;
+  if (sA.pf !== sB.pf) return sB.pf - sB.pf;
   // 5. Puntos en Contra (ascendente, menos es mejor)
   if (sA.pc !== sB.pc) return sA.pc - sB.pc;
   // Si todo es igual, se considera empate numérico
@@ -421,7 +421,7 @@ function ActiveTournamentPageComponent() {
                 const p1Input = savedDuplaObject.jugadores[0];
                 const p2Input = savedDuplaObject.jugadores[1];
 
-                if (!p1Input || !p2Input || !p1Input.name || !p2Input.name) {
+                if (!p1Input || !p2Input || !p1Input.name) {
                     console.warn('Skipping dupla with invalid player data:', savedDuplaObject);
                     return null;
                 }
@@ -1114,44 +1114,61 @@ const handleDownloadFixture = () => {
       return;
     }
 
-    const csvRows = [
-      ['Categoría', 'Fase/Grupo', 'Ronda/Descripción', 'Dupla 1', 'Dupla 2', 'Cancha Asignada', 'Hora Programada', 'Resultado']
-    ];
+    const csvRows: (string | number)[][] = [];
+    const matchHeaders = ['Ronda/Fase', 'Dupla 1', '', 'Dupla 2', 'Cancha', 'Hora', 'Resultado'];
+
+    csvRows.push([`FIXTURE: ${torneo.tournamentName}`]);
+    csvRows.push([]); // Blank row
 
     Object.values(fixture).forEach(catFixture => {
-      // Group Matches
-      catFixture.groups.forEach(group => {
-        group.matches.forEach((match, index) => {
-          const row = [
-            catFixture.categoryName,
-            group.name,
-            `Ronda ${index + 1}`,
-            match.dupla1.nombre,
-            match.dupla2.nombre,
-            match.court ? String(match.court) : 'TBD',
-            match.time || 'TBD',
-            match.status === 'completed' ? `${match.score1} - ${match.score2}` : 'Pendiente'
-          ];
-          csvRows.push(row);
-        });
-      });
+      csvRows.push([`CATEGORÍA: ${catFixture.categoryName}`]);
+      csvRows.push([]); // Blank row
 
-      // Playoff Matches
-      if (catFixture.playoffMatches) {
-        catFixture.playoffMatches.forEach(match => {
-          const row = [
-            catFixture.categoryName,
-            'Playoffs',
-            match.description, 
-            match.dupla1.nombre,
-            match.dupla2.nombre,
-            match.court ? String(match.court) : 'TBD',
-            match.time || 'TBD',
-            match.status === 'completed' ? `${match.score1} - ${match.score2}` : 'Pendiente'
-          ];
-          csvRows.push(row);
+      // Group Matches
+      if (catFixture.groups.length > 0) {
+        catFixture.groups.forEach(group => {
+          csvRows.push([group.name]);
+          const duplaNames = group.duplas.map(d => d.nombre);
+          csvRows.push(['Duplas en grupo:', ...duplaNames]);
+          csvRows.push(matchHeaders);
+          
+          group.matches.forEach((match, index) => {
+            const row = [
+              `Ronda ${index + 1}`,
+              match.dupla1.nombre,
+              'vs',
+              match.dupla2.nombre,
+              match.court ? `Cancha ${match.court}` : 'TBD',
+              match.time || 'TBD',
+              match.status === 'completed' ? `${match.score1} - ${match.score2}` : 'Pendiente'
+            ];
+            csvRows.push(row);
+          });
+          csvRows.push([]); // Blank row after each group
         });
       }
+
+      // Playoff Matches
+      if (catFixture.playoffMatches && catFixture.playoffMatches.length > 0) {
+        csvRows.push(['PLAYOFFS']);
+        csvRows.push(matchHeaders);
+        
+        catFixture.playoffMatches.forEach(match => {
+          const row = [
+            match.description || match.stage, 
+            match.dupla1.nombre,
+            'vs',
+            match.dupla2.nombre,
+            match.court ? `Cancha ${match.court}` : 'TBD',
+            match.time || 'TBD',
+            match.status === 'completed' ? `${match.score1} - ${match.score2}` : 'Pendiente'
+          ];
+          csvRows.push(row);
+        });
+        csvRows.push([]); // Blank row after playoffs
+      }
+      
+      csvRows.push([]); // Extra blank row to separate categories
     });
 
     const escapeCsvField = (field: string | number) => {
@@ -1175,6 +1192,7 @@ const handleDownloadFixture = () => {
     
     toast({ title: "Descarga Iniciada", description: "El archivo del fixture se está descargando." });
 };
+
 
 
   if (isLoading) {
@@ -1690,4 +1708,5 @@ export default function ActiveTournamentPage() {
 }
       
 
+    
     
