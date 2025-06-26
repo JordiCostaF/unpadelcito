@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power, Save, PlayCircle, Edit, ChevronLeft, ChevronRight, AlertTriangle, Download } from 'lucide-react';
+import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power, Save, PlayCircle, Edit, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
 import React, { useEffect, useState, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -40,8 +40,6 @@ import { useForm, type UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
 // Renaming imported types to avoid conflicts if this page also defines its own PlayerFormValues
 export type PlayerFormValues = PlayerFormValuesFromRandom;
@@ -142,15 +140,15 @@ interface GroupScheduleState {
 
 function compareStandingsNumerically(sA: Standing, sB: Standing): number {
   // 1. Puntos (descendente)
-  if (sA.pts !== sB.pts) return sB.pts - sB.pts;
+  if (sA.pts !== sB.pts) return sB.pts - sA.pts;
   // 2. Partidos Ganados (descendente)
-  if (sA.pg !== sB.pg) return sB.pg - sB.pg;
+  if (sA.pg !== sB.pg) return sB.pg - sA.pg;
   // 3. Diferencia de Puntos (descendente)
   const diffA = sA.pf - sA.pc;
   const diffB = sB.pf - sB.pc;
   if (diffA !== diffB) return diffB - diffA;
   // 4. Puntos a Favor (descendente)
-  if (sA.pf !== sB.pf) return sB.pf - sB.pf;
+  if (sA.pf !== sB.pf) return sB.pf - sA.pf;
   // 5. Puntos en Contra (ascendente, menos es mejor)
   if (sA.pc !== sB.pc) return sA.pc - sB.pc;
   // Si todo es igual, se considera empate numérico
@@ -1110,124 +1108,6 @@ const handleConfirmPlayoffSchedule = () => {
     setIsPlayoffSchedulerDialogOpen(false);
 };
 
-const handleDownloadPdfFixture = () => {
-    if (!fixture || !torneo) {
-      toast({ title: "Error", description: "No hay fixture para descargar.", variant: "destructive" });
-      return;
-    }
-
-    try {
-      const doc = new jsPDF();
-      let yPos = 15; // Initial Y position
-
-      doc.setFontSize(18);
-      doc.text(`Fixture de Grupos: ${torneo.tournamentName}`, 14, yPos);
-      yPos += 15;
-
-      for (const catFixture of Object.values(fixture)) {
-        const hasGroupsWithDuplas = catFixture.groups && catFixture.groups.some(g => g.duplas.length > 0);
-        if (!hasGroupsWithDuplas) continue;
-
-        if (yPos > 250) { 
-          doc.addPage();
-          yPos = 15;
-        }
-
-        doc.setFontSize(14);
-        doc.text(`CATEGORÍA: ${catFixture.categoryName}`, 14, yPos);
-        yPos += 10;
-
-        for (const group of catFixture.groups) {
-          if (group.duplas.length === 0) continue;
-
-          // Standings Table
-          if (yPos > 220) {
-            doc.addPage();
-            yPos = 15;
-          }
-          doc.setFontSize(12);
-          doc.text(`Posiciones - ${group.name}`, 14, yPos);
-          
-          const standingsHead = [['#', 'Dupla', 'PJ', 'PG', 'PP', 'DIF', 'Pts']];
-          const standingsBody = [...group.standings]
-            .sort(compareStandingsNumerically)
-            .map((s, idx) => [
-              String(idx + 1),
-              String(s?.duplaName ?? 'N/A'),
-              String(s?.pj ?? 0),
-              String(s?.pg ?? 0),
-              String(s?.pp ?? 0),
-              String((s?.pf ?? 0) - (s?.pc ?? 0)),
-              String(s?.pts ?? 0)
-            ]);
-
-          autoTable(doc, {
-            startY: yPos + 5,
-            head: standingsHead,
-            body: standingsBody,
-            theme: 'grid',
-            headStyles: { fillColor: [255, 153, 51] },
-            styles: { fontSize: 8 },
-          });
-
-          if ((doc as any).lastAutoTable && (doc as any).lastAutoTable.finalY) {
-            yPos = (doc as any).lastAutoTable.finalY + 15;
-          } else {
-             yPos += 50; // Fallback
-          }
-
-          // Matches Table
-          if (yPos > 220) {
-            doc.addPage();
-            yPos = 15;
-          }
-          doc.setFontSize(12);
-          doc.text(`Partidos - ${group.name}`, 14, yPos);
-
-          const matchesHead = [['Ronda', 'Dupla 1', 'Dupla 2', 'Cancha', 'Hora', 'Resultado']];
-          const matchesBody = group.matches.map((match, index) => [
-              `Ronda ${index + 1}`,
-              String(match?.dupla1?.nombre ?? 'N/A'),
-              String(match?.dupla2?.nombre ?? 'N/A'),
-              String(match?.court ?? 'TBD'),
-              String(match?.time ?? 'TBD'),
-              (match?.status === 'completed' && match.score1 !== undefined && match.score2 !== undefined)
-                ? `${match.score1} - ${match.score2}`
-                : 'Pendiente'
-          ]);
-
-          autoTable(doc, {
-            startY: yPos + 5,
-            head: matchesHead,
-            body: matchesBody,
-            theme: 'grid',
-            headStyles: { fillColor: [255, 153, 51] },
-            styles: { fontSize: 8 },
-          });
-          
-          if ((doc as any).lastAutoTable && (doc as any).lastAutoTable.finalY) {
-            yPos = (doc as any).lastAutoTable.finalY + 15;
-          } else {
-             yPos += 50; // Fallback
-          }
-        }
-      }
-      
-      const safeFilename = `fixture_grupos_${torneo.tournamentName.replace(/[^a-zA-Z0-9 -]/g, '').replace(/\s+/g, '_')}.pdf`;
-      toast({ title: "Descarga Iniciada", description: "El archivo PDF del fixture se está descargando." });
-      doc.save(safeFilename);
-
-    } catch (error) {
-      console.error("Error al generar PDF:", error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      toast({
-          title: "Error al generar PDF",
-          description: `Ocurrió un problema: ${errorMessage}.`,
-          variant: "destructive"
-      });
-    }
-};
-
 
   if (isLoading) {
     return (
@@ -1438,12 +1318,7 @@ const handleDownloadPdfFixture = () => {
       {fixture && Object.keys(fixture).length > 0 && (
         <Card className="w-full max-w-4xl mb-8 shadow-lg">
             <CardHeader>
-                <div className="flex justify-between items-center">
-                    <CardTitle className="text-2xl flex items-center"><TrophyIcon className="mr-2 h-6 w-6 text-primary" /> Planilla del Torneo</CardTitle>
-                    <Button variant="outline" size="sm" onClick={handleDownloadPdfFixture}>
-                        <Download className="mr-2 h-4 w-4" /> Descargar Fixture (PDF)
-                    </Button>
-                </div>
+                <CardTitle className="text-2xl flex items-center"><TrophyIcon className="mr-2 h-6 w-6 text-primary" /> Planilla del Torneo</CardTitle>
                 <CardDescription>Define la configuración para cada grupo y programa sus partidos. Luego programa los playoffs.</CardDescription>
             </CardHeader>
             <CardContent>
