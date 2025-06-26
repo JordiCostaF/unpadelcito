@@ -389,7 +389,6 @@ function ActiveTournamentPageComponent() {
         html2canvas(shareableRef.current!, { 
           scale: 2,
           useCORS: true,
-          backgroundColor: null, 
         }).then((canvas) => {
           const image = canvas.toDataURL("image/png");
           const link = document.createElement("a");
