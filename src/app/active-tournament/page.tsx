@@ -142,9 +142,9 @@ interface GroupScheduleState {
 
 function compareStandingsNumerically(sA: Standing, sB: Standing): number {
   // 1. Puntos (descendente)
-  if (sA.pts !== sB.pts) return sB.pts - sB.pts;
+  if (sA.pts !== sB.pts) return sB.pts - sA.pts;
   // 2. Partidos Ganados (descendente)
-  if (sA.pg !== sB.pg) return sB.pg - sB.pg;
+  if (sA.pg !== sB.pg) return sB.pg - sA.pg;
   // 3. Diferencia de Puntos (descendente)
   const diffA = sA.pf - sA.pc;
   const diffB = sB.pf - sB.pc;
@@ -1122,6 +1122,13 @@ const handleDownloadPdfFixture = () => {
       const margin = 20;
       let yPos = margin;
 
+      const checkAndAddPage = () => {
+        if (yPos > pageHeight - margin) {
+          doc.addPage();
+          yPos = margin;
+        }
+      };
+
       doc.setFontSize(18);
       doc.text(`Fixture: ${torneo.tournamentName}`, 14, yPos);
       yPos += 10;
@@ -1130,10 +1137,7 @@ const handleDownloadPdfFixture = () => {
         const hasContent = (catFixture.groups && catFixture.groups.some(g => g.duplas.length > 0)) || (catFixture.playoffMatches && catFixture.playoffMatches.length > 0);
         if (!hasContent) return;
 
-        if (yPos > pageHeight - margin) {
-            doc.addPage();
-            yPos = margin;
-        }
+        checkAndAddPage();
         
         doc.setFontSize(14);
         doc.text(`CATEGORÍA: ${catFixture.categoryName}`, 14, yPos);
@@ -1141,10 +1145,9 @@ const handleDownloadPdfFixture = () => {
 
         if (catFixture.groups.length > 0) {
           catFixture.groups.forEach(group => {
-            if (yPos > pageHeight - margin) {
-               doc.addPage();
-               yPos = margin;
-            }
+            if (group.duplas.length === 0) return;
+
+            checkAndAddPage();
             doc.setFontSize(12);
             doc.text(`Posiciones - ${group.name}`, 14, yPos);
             
@@ -1153,14 +1156,14 @@ const handleDownloadPdfFixture = () => {
               .sort(compareStandingsNumerically)
               .map((s, idx) => [
                 (idx + 1).toString(),
-                s.duplaName.toString(),
-                s.pj.toString(),
-                s.pg.toString(),
-                s.pp.toString(),
-                s.pf.toString(),
-                s.pc.toString(),
-                (s.pf - s.pc).toString(),
-                s.pts.toString()
+                String(s.duplaName ?? 'N/A'),
+                String(s.pj),
+                String(s.pg),
+                String(s.pp),
+                String(s.pf),
+                String(s.pc),
+                String(s.pf - s.pc),
+                String(s.pts)
               ]);
             
             autoTable(doc, {
@@ -1173,21 +1176,17 @@ const handleDownloadPdfFixture = () => {
             });
             yPos = (doc as any).lastAutoTable.finalY + 10;
             
-            if (yPos > pageHeight - margin) {
-               doc.addPage();
-               yPos = margin;
-            }
-
+            checkAndAddPage();
             doc.setFontSize(12);
             doc.text(`Partidos - ${group.name}`, 14, yPos);
 
             const matchesHead = [['Ronda', 'Dupla 1', 'Dupla 2', 'Cancha', 'Hora', 'Resultado']];
             const matchesBody = group.matches.map((match, index) => [
                 `Ronda ${index + 1}`,
-                match.dupla1?.nombre || 'N/A',
-                match.dupla2?.nombre || 'N/A',
-                match.court ? (typeof match.court === 'string' ? match.court : `Cancha ${match.court}`) : 'TBD',
-                match.time || 'TBD',
+                String(match.dupla1?.nombre ?? 'N/A'),
+                String(match.dupla2?.nombre ?? 'N/A'),
+                String(match.court ?? 'TBD'),
+                String(match.time ?? 'TBD'),
                 match.status === 'completed' && match.score1 !== undefined && match.score2 !== undefined
                   ? `${match.score1} - ${match.score2}`
                   : 'Pendiente'
@@ -1206,34 +1205,22 @@ const handleDownloadPdfFixture = () => {
         }
 
         if (catFixture.playoffMatches && catFixture.playoffMatches.length > 0) {
-          if (yPos > pageHeight - margin) {
-             doc.addPage();
-             yPos = margin;
-          }
+          checkAndAddPage();
 
           doc.setFontSize(12);
           doc.text('PLAYOFFS', 14, yPos);
 
           const playoffHead = [['Fase', 'Dupla 1', 'Dupla 2', 'Cancha', 'Hora', 'Resultado']];
-          const playoffBody = catFixture.playoffMatches
-              .sort((a,b) => {
-                  const stageOrder = (stage: PlayoffMatch['stage']) => {
-                      if (stage === 'final') return 0;
-                      if (stage === 'tercer_puesto') return 1;
-                      if (stage === 'semifinal') return 2;
-                      return 3;
-                  };
-                  if (stageOrder(a.stage) !== stageOrder(b.stage)) {
-                      return stageOrder(a.stage) - stageOrder(b.stage);
-                  }
-                  return (a.time || "99:99").localeCompare(b.time || "99:99") || (a.court?.toString() || "Z99").localeCompare((b.court?.toString() || "Z99"));
-              })
+          const stageOrderMap: Record<PlayoffMatch['stage'], number> = { 'final': 1, 'tercer_puesto': 2, 'semifinal': 3 };
+
+          const playoffBody = [...catFixture.playoffMatches]
+              .sort((a, b) => (stageOrderMap[a.stage] || 99) - (stageOrderMap[b.stage] || 99))
               .map(match => [
-                  match.description || match.stage.charAt(0).toUpperCase() + match.stage.slice(1),
-                  match.dupla1?.nombre || 'N/A',
-                  match.dupla2?.nombre || 'N/A',
-                  match.court ? (typeof match.court === 'string' ? match.court : `Cancha ${match.court}`) : 'TBD',
-                  match.time || 'TBD',
+                  String(match.description || (match.stage.charAt(0).toUpperCase() + match.stage.slice(1))),
+                  String(match.dupla1?.nombre ?? 'N/A'),
+                  String(match.dupla2?.nombre ?? 'N/A'),
+                  String(match.court ?? 'TBD'),
+                  String(match.time ?? 'TBD'),
                   match.status === 'completed' && match.score1 !== undefined && match.score2 !== undefined
                     ? `${match.score1} - ${match.score2}`
                     : 'Pendiente'
@@ -1254,13 +1241,14 @@ const handleDownloadPdfFixture = () => {
       
       toast({ title: "Descarga Iniciada", description: "El archivo PDF del fixture se está descargando." });
       doc.save(`fixture_${torneo.tournamentName.replace(/\s+/g, '_')}.pdf`);
-    } catch (error: any) {
-        console.error("Error al generar PDF:", error);
-        toast({
-            title: "Error al generar PDF",
-            description: `Ocurrió un problema: ${error.message || 'Error desconocido'}. Revisa la consola para más detalles.`,
-            variant: "destructive"
-        });
+    } catch (error) {
+      console.error("Error al generar PDF:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      toast({
+          title: "Error al generar PDF",
+          description: `Ocurrió un problema: ${errorMessage}. Revisa la consola para más detalles.`,
+          variant: "destructive"
+      });
     }
 };
 
@@ -1564,7 +1552,7 @@ const handleDownloadPdfFixture = () => {
                                                             <TableHead className="w-[40px] px-1 text-center">PJ</TableHead>
                                                             <TableHead className="w-[40px] px-1 text-center">PG</TableHead>
                                                             <TableHead className="w-[40px] px-1 text-center">PP</TableHead>
-                                                            <TableHead className="w-[60px] px-1 text-center">PF-PC</TableHead>
+                                                            <TableHead className="w-[60px] px-1 text-center">DIF</TableHead>
                                                             <TableHead className="w-[40px] px-1 text-center">PF</TableHead>
                                                             <TableHead className="w-[40px] px-1 text-center">PC</TableHead>
                                                             <TableHead className="w-[40px] px-1 text-center">Pts</TableHead>
