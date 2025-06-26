@@ -142,9 +142,9 @@ interface GroupScheduleState {
 
 function compareStandingsNumerically(sA: Standing, sB: Standing): number {
   // 1. Puntos (descendente)
-  if (sA.pts !== sB.pts) return sB.pts - sA.pts;
+  if (sA.pts !== sB.pts) return sB.pts - sB.pts;
   // 2. Partidos Ganados (descendente)
-  if (sA.pg !== sB.pg) return sB.pg - sA.pg;
+  if (sA.pg !== sB.pg) return sB.pg - sB.pg;
   // 3. Diferencia de Puntos (descendente)
   const diffA = sA.pf - sA.pc;
   const diffB = sB.pf - sB.pc;
@@ -1145,7 +1145,7 @@ const handleDownloadPdfFixture = () => {
           doc.setFontSize(12);
           doc.text(`Posiciones - ${group.name}`, 14, yPos);
           
-          const standingsHead = [['#', 'Dupla', 'PJ', 'PG', 'PP', 'PF-PC', 'Pts']];
+          const standingsHead = [['#', 'Dupla', 'PJ', 'PG', 'PP', 'PF', 'PC', 'DIF', 'Pts']];
           const standingsBody = [...group.standings]
             .sort(compareStandingsNumerically)
             .map((s, idx) => [
@@ -1154,6 +1154,8 @@ const handleDownloadPdfFixture = () => {
               s.pj,
               s.pg,
               s.pp,
+              s.pf,
+              s.pc,
               s.pf - s.pc,
               s.pts
             ]);
@@ -1181,7 +1183,7 @@ const handleDownloadPdfFixture = () => {
               `Ronda ${index + 1}`,
               match.dupla1.nombre,
               match.dupla2.nombre,
-              match.court ? `Cancha ${match.court}` : 'TBD',
+              match.court ? (typeof match.court === 'string' ? match.court : `Cancha ${match.court}`) : 'TBD',
               match.time || 'TBD',
               match.status === 'completed' ? `${match.score1} - ${match.score2}` : 'Pendiente'
           ]);
@@ -1225,7 +1227,7 @@ const handleDownloadPdfFixture = () => {
                 match.description || match.stage,
                 match.dupla1.nombre,
                 match.dupla2.nombre,
-                match.court ? `Cancha ${match.court}` : 'TBD',
+                match.court ? (typeof match.court === 'string' ? match.court : `Cancha ${match.court}`) : 'TBD',
                 match.time || 'TBD',
                 match.status === 'completed' ? `${match.score1} - ${match.score2}` : 'Pendiente'
             ]);
