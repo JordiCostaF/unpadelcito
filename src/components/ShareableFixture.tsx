@@ -58,11 +58,11 @@ export const ShareableFixture = React.forwardRef<HTMLDivElement, ShareableFixtur
                       {group.matches.map((match) => (
                         <li key={match.id} className="text-md border-b border-border/50 pb-2 last:border-b-0">
                            <div className="flex justify-between items-center gap-4">
-                            <div className="flex-grow">
-                                <p className="font-semibold">{match.dupla1.nombre}</p>
-                                <p className="text-center font-bold text-primary text-sm my-1">vs</p>
-                                <p className="font-semibold">{match.dupla2.nombre}</p>
-                            </div>
+                            <p className="flex-grow font-semibold">
+                                {match.dupla1.nombre}
+                                <span className="text-center font-bold text-primary text-sm mx-2">vs</span>
+                                {match.dupla2.nombre}
+                            </p>
                             <div className="text-sm text-muted-foreground text-right shrink-0">
                               <p>{match.court ? (typeof match.court === 'number' ? `Cancha ${match.court}`: match.court) : 'TBD'}</p>
                               <p>{match.time || 'TBD'}</p>
