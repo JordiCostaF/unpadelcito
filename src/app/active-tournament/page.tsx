@@ -3,8 +3,8 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power, Save, PlayCircle, Edit, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
-import React, { useEffect, useState, useCallback, Suspense } from 'react';
+import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power, Save, PlayCircle, Edit, ChevronLeft, ChevronRight, AlertTriangle, Share2 } from 'lucide-react';
+import React, { useEffect, useState, useCallback, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -41,6 +41,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Switch } from '@/components/ui/switch';
+import html2canvas from 'html2canvas';
+import { ShareableFixture } from '@/components/ShareableFixture';
 
 
 // Renaming imported types to avoid conflicts if this page also defines its own PlayerFormValues
@@ -48,7 +50,7 @@ export type PlayerFormValues = PlayerFormValuesFromRandom;
 export type CategoryFormValues = CategoryFormValuesFromRandom;
 
 
-interface Dupla {
+export interface Dupla {
   id: string;
   jugadores: [PlayerFormValues, PlayerFormValues]; 
   nombre: string; 
@@ -71,7 +73,7 @@ export interface TorneoActivoData {
   playThirdPlace?: boolean;
 }
 
-interface Standing {
+export interface Standing {
   duplaId: string;
   duplaName: string;
   pj: number; 
@@ -82,7 +84,7 @@ interface Standing {
   pts: number; 
 }
 
-interface Match {
+export interface Match {
   id: string;
   round?: number; 
   dupla1: Dupla;
@@ -96,7 +98,7 @@ interface Match {
   groupOriginId?: string; 
 }
 
-interface Group {
+export interface Group {
   id: string;
   name: string; 
   duplas: Dupla[];
@@ -107,19 +109,19 @@ interface Group {
   groupMatchDuration?: number;
 }
 
-interface PlayoffMatch extends Match {
+export interface PlayoffMatch extends Match {
   stage: 'semifinal' | 'final' | 'tercer_puesto';
   description: string; 
 }
 
-interface CategoryFixture {
+export interface CategoryFixture {
   categoryId: string;
   categoryName: string;
   groups: Group[];
   playoffMatches?: PlayoffMatch[];
 }
 
-interface FixtureData {
+export interface FixtureData {
   [categoryId: string]: CategoryFixture;
 }
 
@@ -370,6 +372,51 @@ function ActiveTournamentPageComponent() {
       breakDuration: string;
       defaultMatchDuration: string;
   }>({ breakDuration: "30", defaultMatchDuration: "60" });
+  
+  const shareableRef = useRef<HTMLDivElement>(null);
+  const [categoryToShare, setCategoryToShare] = useState<CategoryFixture | null>(null);
+  const [isSharing, setIsSharing] = useState(false);
+
+  useEffect(() => {
+    if (categoryToShare && shareableRef.current && !isSharing) {
+      setIsSharing(true);
+      toast({
+        title: "Generando imagen...",
+        description: "Por favor espera un momento.",
+      });
+
+      setTimeout(() => {
+        html2canvas(shareableRef.current!, { 
+          scale: 2,
+          useCORS: true,
+          backgroundColor: null, 
+        }).then((canvas) => {
+          const image = canvas.toDataURL("image/png");
+          const link = document.createElement("a");
+          link.href = image;
+          const fileName = `fixture-${torneo!.tournamentName}-${categoryToShare.categoryName}.png`.replace(/\s+/g, '_').toLowerCase();
+          link.download = fileName;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          toast({
+            title: "¡Imagen generada!",
+            description: "La descarga de la imagen ha comenzado.",
+          });
+        }).catch((err) => {
+          console.error("Error al generar la imagen:", err);
+           toast({
+            title: "Error al generar imagen",
+            description: "No se pudo crear la imagen del fixture. Inténtalo de nuevo.",
+            variant: "destructive"
+          });
+        }).finally(() => {
+          setCategoryToShare(null);
+          setIsSharing(false);
+        });
+      }, 250);
+    }
+  }, [categoryToShare, torneo, toast, isSharing]);
 
 
   const resultForm = useForm<ResultFormValues>({
@@ -1378,6 +1425,16 @@ const handleConfirmPlayoffSchedule = () => {
                     {Object.values(fixture).map((catFixture) => (
                         (catFixture.groups.length > 0 || (catFixture.playoffMatches && catFixture.playoffMatches.length > 0)) &&
                         <TabsContent key={catFixture.categoryId} value={catFixture.categoryId}>
+                             <div className="flex justify-end mb-2">
+                                <Button
+                                  onClick={() => setCategoryToShare(catFixture)}
+                                  disabled={isSharing}
+                                  size="sm"
+                                >
+                                  <Share2 className="mr-2 h-4 w-4" />
+                                  Compartir Planilla de Grupos
+                                </Button>
+                              </div>
                             <Tabs defaultValue="grupos" className="w-full">
                                 <TabsList className="grid w-full grid-cols-3 mb-2">
                                     <TabsTrigger value="grupos" disabled={catFixture.groups.length === 0}>Grupos y Posiciones</TabsTrigger>
@@ -1648,6 +1705,9 @@ const handleConfirmPlayoffSchedule = () => {
               </DialogFooter>
           </DialogContent>
       </Dialog>
+      <div style={{ position: 'absolute', left: '-9999px', top: 0, zIndex: -1 }}>
+         {torneo && <ShareableFixture ref={shareableRef} tournamentName={torneo.tournamentName} categoryFixture={categoryToShare} />}
+      </div>
     </div>
   );
 }
@@ -1659,14 +1719,3 @@ export default function ActiveTournamentPage() {
     </Suspense>
   );
 }
-      
-
-    
-    
-
-    
-
-    
-
-
-    
