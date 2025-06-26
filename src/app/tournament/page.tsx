@@ -40,7 +40,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  CalendarIcon, Users as UsersIcon, Trash2, UserPlus, Trophy, MapPin, Clock, FileText, XCircle, Layers, PlusCircle, Tag, TestTube2, Pencil, Swords
+  CalendarIcon, Users as UsersIcon, Trash2, UserPlus, Trophy, MapPin, Clock, FileText, XCircle, Layers, PlusCircle, Tag, TestTube2, Pencil, Swords, Eraser
 } from "lucide-react";
 import {
   Dialog,
@@ -51,6 +51,17 @@ import {
   DialogTitle,
   DialogClose,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import type { TorneoActivoData, CategoriaConDuplas as CategoriaConDuplasFromActive, PlayerFormValues as PlayerFormValuesFromActiveTournament } from '../active-tournament/page';
 
 
@@ -107,6 +118,8 @@ export default function TournamentPage() {
   const [selectedCategoryTypeForNew, setSelectedCategoryTypeForNew] = useState<CategoryType | "">("");
   const [editingDupla, setEditingDupla] = useState<DuplaFormValues & { originalIndex: number } | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [playerPool, setPlayerPool] = useState<{name: string, rut: string}[]>([]);
+  const [isClearPoolDialogOpen, setIsClearPoolDialogOpen] = useState(false);
  
   const form = useForm<TournamentFormValues>({
     resolver: zodResolver(tournamentFormSchema),
@@ -152,6 +165,17 @@ export default function TournamentPage() {
 
   const watchedCategories = form.watch("categories");
   const watchedDuplas = form.watch("duplas");
+
+  useEffect(() => {
+    try {
+      const storedPool = localStorage.getItem('unpadelcitoPlayerPool');
+      if (storedPool) {
+        setPlayerPool(JSON.parse(storedPool));
+      }
+    } catch (error) {
+      console.error("Error loading player pool from localStorage:", error);
+    }
+  }, []);
 
   useEffect(() => {
     if (editingDupla) {
@@ -301,6 +325,36 @@ export default function TournamentPage() {
       title: "Dupla Añadida",
       description: `Dupla ${duplaData.player1.name} / ${duplaData.player2.name} ha sido añadida.`,
     });
+    
+    setPlayerPool(prevPool => {
+        const playersToAdd = [duplaData.player1, duplaData.player2];
+        const newPool = [...prevPool];
+        let madeChanges = false;
+
+        playersToAdd.forEach(player => {
+            if (player.name && player.rut) {
+                const isInPool = newPool.some(p => p.rut === player.rut);
+                if (!isInPool) {
+                    newPool.push({ name: player.name, rut: player.rut });
+                    madeChanges = true;
+                }
+            }
+        });
+
+        if (madeChanges) {
+            try {
+                localStorage.setItem('unpadelcitoPlayerPool', JSON.stringify(newPool));
+                toast({
+                    title: "Jugador(es) Guardado(s)",
+                    description: `Los nuevos jugadores se han guardado para futuros torneos.`,
+                });
+            } catch (error) {
+                console.error("Error saving to localStorage:", error);
+            }
+            return newPool;
+        }
+        return prevPool;
+    });
   }
   
   function handleOpenEditDuplaModal(dupla: DuplaFormValues, index: number) {
@@ -336,6 +390,36 @@ export default function TournamentPage() {
     const levelShort = category.level.split(" ")[0]; 
     return `${type}. ${levelShort}`;
   }
+
+  const handlePlayerNameChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+    playerField: "player1" | "player2"
+  ) => {
+      const name = event.target.value;
+      duplaForm.setValue(`${playerField}.name`, name);
+      const matchedPlayer = playerPool.find(p => p.name === name);
+      if (matchedPlayer && matchedPlayer.rut) {
+          duplaForm.setValue(`${playerField}.rut`, matchedPlayer.rut, { shouldValidate: true });
+      }
+  };
+
+  const handleClearPlayerPoolConfirm = () => {
+    try {
+      localStorage.removeItem('unpadelcitoPlayerPool');
+      setPlayerPool([]);
+      toast({
+        title: "Lista de Jugadores Limpiada",
+        description: "Todos los jugadores guardados han sido eliminados de la memoria del navegador.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo limpiar la lista de jugadores guardados.",
+        variant: "destructive",
+      });
+    }
+    setIsClearPoolDialogOpen(false);
+  };
 
   const fillWithTestData = () => {
     form.reset({
@@ -388,6 +472,27 @@ export default function TournamentPage() {
 
   return (
     <div className="container mx-auto flex flex-col items-center flex-1 py-8 px-4 md:px-6">
+      <AlertDialog open={isClearPoolDialogOpen} onOpenChange={setIsClearPoolDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción eliminará permanentemente tu lista de jugadores guardados del navegador. No podrás deshacer esta acción.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleClearPlayerPoolConfirm} className="bg-destructive hover:bg-destructive/90">
+              Sí, Limpiar Lista
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      
+      <datalist id="player-pool-list">
+        {playerPool.map(p => <option key={p.rut} value={p.name} />)}
+      </datalist>
+
       <div className="flex items-center mb-8">
         <Swords className="h-12 w-12 text-primary mr-3" />
         <h1 className="text-4xl md:text-5xl font-bold font-headline text-primary">
@@ -608,8 +713,13 @@ export default function TournamentPage() {
 
           <Card className="shadow-lg">
             <CardHeader>
-              <CardTitle className="text-2xl flex items-center"><UsersIcon className="mr-2 h-6 w-6 text-primary" />Inscribir Duplas</CardTitle>
-              <CardDescription>Añade las duplas participantes a las categorías correspondientes.</CardDescription>
+              <div className="flex justify-between items-center">
+                 <CardTitle className="text-2xl flex items-center"><UsersIcon className="mr-2 h-6 w-6 text-primary" />Inscribir Duplas</CardTitle>
+                 <Button variant="outline" size="sm" onClick={() => setIsClearPoolDialogOpen(true)} disabled={playerPool.length === 0}>
+                    <Eraser className="mr-2 h-4 w-4" /> Limpiar Jugadores Guardados
+                  </Button>
+              </div>
+              <CardDescription>Añade las duplas participantes. Los nuevos jugadores con RUT se guardarán para futuros torneos.</CardDescription>
             </CardHeader>
             <CardContent>
               {watchedCategories.length === 0 ? (
@@ -628,7 +738,14 @@ export default function TournamentPage() {
                                 render={({ field }) => (
                                 <FormItem>
                                     <FormLabel>Nombre Jugador 1</FormLabel>
-                                    <FormControl><Input placeholder="Nombre" {...field} /></FormControl>
+                                    <FormControl>
+                                      <Input 
+                                        placeholder="Nombre (Escribe para buscar)" 
+                                        {...field} 
+                                        onChange={(e) => handlePlayerNameChange(e, 'player1')}
+                                        list="player-pool-list"
+                                      />
+                                    </FormControl>
                                     <FormMessage />
                                 </FormItem>
                                 )}
@@ -655,7 +772,14 @@ export default function TournamentPage() {
                                 render={({ field }) => (
                                 <FormItem>
                                     <FormLabel>Nombre Jugador 2</FormLabel>
-                                    <FormControl><Input placeholder="Nombre" {...field} /></FormControl>
+                                    <FormControl>
+                                      <Input 
+                                        placeholder="Nombre (Escribe para buscar)" 
+                                        {...field} 
+                                        onChange={(e) => handlePlayerNameChange(e, 'player2')}
+                                        list="player-pool-list"
+                                      />
+                                    </FormControl>
                                     <FormMessage />
                                 </FormItem>
                                 )}
@@ -888,3 +1012,5 @@ export default function TournamentPage() {
     </div>
   );
 }
+
+    
