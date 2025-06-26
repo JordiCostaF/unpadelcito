@@ -142,15 +142,15 @@ interface GroupScheduleState {
 
 function compareStandingsNumerically(sA: Standing, sB: Standing): number {
   // 1. Puntos (descendente)
-  if (sA.pts !== sB.pts) return sB.pts - sA.pts;
+  if (sA.pts !== sB.pts) return sB.pts - sB.pts;
   // 2. Partidos Ganados (descendente)
-  if (sA.pg !== sB.pg) return sB.pg - sA.pg;
+  if (sA.pg !== sB.pg) return sB.pg - sB.pg;
   // 3. Diferencia de Puntos (descendente)
   const diffA = sA.pf - sA.pc;
   const diffB = sB.pf - sB.pc;
   if (diffA !== diffB) return diffB - diffA;
   // 4. Puntos a Favor (descendente)
-  if (sA.pf !== sB.pf) return sB.pf - sA.pf;
+  if (sA.pf !== sB.pf) return sB.pf - sB.pf;
   // 5. Puntos en Contra (ascendente, menos es mejor)
   if (sA.pc !== sB.pc) return sA.pc - sB.pc;
   // Si todo es igual, se considera empate numérico
@@ -1746,5 +1746,8 @@ export default function ActiveTournamentPage() {
     
 
     
+
+    
+
 
     
