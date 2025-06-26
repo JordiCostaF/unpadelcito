@@ -291,6 +291,7 @@ export default function RandomTournamentPage() {
         categoriesWithDuplas: categoriesWithDuplasOutput,
         numCourts: form.getValues().players.length > 10 ? 4 : 2,
         matchDuration: 60,
+        playThirdPlace: true,
     };
   
     try {

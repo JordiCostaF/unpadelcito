@@ -40,6 +40,8 @@ import { useForm, type UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Switch } from '@/components/ui/switch';
+
 
 // Renaming imported types to avoid conflicts if this page also defines its own PlayerFormValues
 export type PlayerFormValues = PlayerFormValuesFromRandom;
@@ -66,6 +68,7 @@ export interface TorneoActivoData {
   categoriesWithDuplas: CategoriaConDuplas[];
   numCourts?: number;
   matchDuration?: number;
+  playThirdPlace?: boolean;
 }
 
 interface Standing {
@@ -353,6 +356,7 @@ function ActiveTournamentPageComponent() {
   const [isLoading, setIsLoading] = useState(true);
   const [numCourtsGlobal, setNumCourtsGlobal] = useState<number | undefined>(2);
   const [matchDurationGlobal, setMatchDurationGlobal] = useState<number | undefined>(60);
+  const [playThirdPlace, setPlayThirdPlace] = useState<boolean>(true);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const { toast } = useToast();
   
@@ -456,6 +460,7 @@ function ActiveTournamentPageComponent() {
         setTorneo({ ...parsedTorneo, categoriesWithDuplas: transformedCategories });
         setNumCourtsGlobal(parsedTorneo.numCourts || 2);
         setMatchDurationGlobal(parsedTorneo.matchDuration || 60);
+        setPlayThirdPlace(parsedTorneo.playThirdPlace ?? true);
         
         const storedFixture = sessionStorage.getItem(`fixture_${parsedTorneo.tournamentName}`);
         if (storedFixture) {
@@ -515,19 +520,29 @@ function ActiveTournamentPageComponent() {
   };
 
 
- const handleGlobalTournamentSettingChange = (type: 'courts', value: string) => {
+ const handleGlobalTournamentSettingChange = (type: 'courts' | 'thirdPlace', value: string | boolean) => {
     if (!torneo) return;
     
     let updatedTorneoData = { ...torneo };
     let settingChanged = false;
+    let toastDescription = "";
 
     if (type === 'courts') {
-      const numericValue = parseInt(value, 10);
-      if (numCourtsGlobal !== numericValue) {
+      const numericValue = parseInt(value as string, 10);
+      if (!isNaN(numericValue) && numCourtsGlobal !== numericValue) {
         setNumCourtsGlobal(numericValue);
         updatedTorneoData.numCourts = numericValue;
         settingChanged = true;
+        toastDescription = "Se actualizó el número de canchas disponibles.";
       }
+    } else if (type === 'thirdPlace') {
+        const checked = value as boolean;
+        if (playThirdPlace !== checked) {
+            setPlayThirdPlace(checked);
+            updatedTorneoData.playThirdPlace = checked;
+            settingChanged = true;
+            toastDescription = checked ? "Se jugará partido por el tercer puesto." : "No se jugará partido por el tercer puesto.";
+        }
     }
     
     if (settingChanged) {
@@ -539,7 +554,7 @@ function ActiveTournamentPageComponent() {
         );
         setListaTorneos(updatedList);
         sessionStorage.setItem('listaTorneosActivos', JSON.stringify(updatedList));
-        toast({ title: "Ajuste Informativo Guardado", description: `Se actualizó el número de canchas disponibles.` });
+        toast({ title: "Ajuste Guardado", description: toastDescription });
     }
   };
 
@@ -657,8 +672,11 @@ function ActiveTournamentPageComponent() {
                 { id: `${category.id}-SF1`, dupla1: placeholderDuplaW_G1, dupla2: placeholderDuplaRU_G2, status: 'pending', stage: 'semifinal', description: 'Ganador Grupo A vs Segundo Grupo B', court: undefined, time: undefined },
                 { id: `${category.id}-SF2`, dupla1: placeholderDuplaW_G2, dupla2: placeholderDuplaRU_G1, status: 'pending', stage: 'semifinal', description: 'Ganador Grupo B vs Segundo Grupo A', court: undefined, time: undefined },
                 { id: `${category.id}-F`, dupla1: placeholderDuplaW_SF1, dupla2: placeholderDuplaW_SF2, status: 'pending', stage: 'final', description: 'Final', court: undefined, time: undefined },
-                { id: `${category.id}-TP`, dupla1: placeholderDuplaL_SF1, dupla2: placeholderDuplaL_SF2, status: 'pending', stage: 'tercer_puesto', description: 'Tercer Puesto', court: undefined, time: undefined},
             ];
+
+            if (playThirdPlace) {
+              playoffMatchesForCategory.push({ id: `${category.id}-TP`, dupla1: placeholderDuplaL_SF1, dupla2: placeholderDuplaL_SF2, status: 'pending', stage: 'tercer_puesto', description: 'Tercer Puesto', court: undefined, time: undefined});
+            }
         }
 
         newFixture[category.id] = {
@@ -863,20 +881,25 @@ function ActiveTournamentPageComponent() {
                 const finalMatch = categoryFixture.playoffMatches.find(m => m.stage === 'final');
                 const thirdPlaceMatch = categoryFixture.playoffMatches.find(m => m.stage === 'tercer_puesto');
 
-                if (finalMatch && thirdPlaceMatch) {
+                if (finalMatch) {
                     const winnerDupla = matchToUpdate.winnerId === matchToUpdate.dupla1.id ? matchToUpdate.dupla1 : matchToUpdate.dupla2;
                     const loserDupla = matchToUpdate.winnerId === matchToUpdate.dupla1.id ? matchToUpdate.dupla2 : matchToUpdate.dupla1;
                     
                     if (matchToUpdate.id.endsWith('SF1')) { 
                         finalMatch.dupla1 = winnerDupla;
-                        thirdPlaceMatch.dupla1 = loserDupla;
+                        if (thirdPlaceMatch) thirdPlaceMatch.dupla1 = loserDupla;
                     } else if (matchToUpdate.id.endsWith('SF2')) { 
                         finalMatch.dupla2 = winnerDupla;
-                        thirdPlaceMatch.dupla2 = loserDupla;
+                        if (thirdPlaceMatch) thirdPlaceMatch.dupla2 = loserDupla;
                     }
-                    [finalMatch, thirdPlaceMatch].forEach(m => {
-                        if (m.dupla1.id.startsWith('placeholder-') || m.dupla2.id.startsWith('placeholder-')) {
-                        } else {
+
+                    const matchesToReset = [finalMatch];
+                    if (thirdPlaceMatch) {
+                      matchesToReset.push(thirdPlaceMatch);
+                    }
+                    matchesToReset.forEach(m => {
+                        if (m && (m.dupla1.id.startsWith('placeholder-') || m.dupla2.id.startsWith('placeholder-'))) {
+                        } else if (m){
                            m.score1 = undefined; m.score2 = undefined; m.status = 'pending'; m.winnerId = undefined;
                         }
                     });
@@ -1011,8 +1034,12 @@ const handleConfirmPlayoffSchedule = () => {
         else if (!runnerUpA && sf2Match.dupla2.id.startsWith('placeholder-')) { /* keep placeholder */ }
         else if (catFixture.groups.length > 0) {toast({title:"Error", description:"SF2: Clasificados B o A no encontrados."}); return; }
     } else { toast({title:"Error", description:"SF2 no encontrada"}); return; }
-
-    [finalMatch, thirdPlaceMatch].forEach(m => {
+    
+    const matchesToReset = [finalMatch];
+    if (thirdPlaceMatch) {
+      matchesToReset.push(thirdPlaceMatch);
+    }
+    matchesToReset.forEach(m => {
         if (m && (!m.dupla1.id.startsWith('placeholder-') || !m.dupla2.id.startsWith('placeholder-'))) {
              m.score1 = undefined; m.score2 = undefined; m.status = 'pending'; m.winnerId = undefined;
         }
@@ -1240,6 +1267,23 @@ const handleConfirmPlayoffSchedule = () => {
               </SelectContent>
             </Select>
           </div>
+           <div className="flex items-center space-x-2 col-span-full sm:col-span-1">
+            <ShieldQuestion className="h-5 w-5 text-primary" />
+            <Label htmlFor="play-third-place" className="flex-grow">Jugar Tercer Puesto</Label>
+            <Switch
+              id="play-third-place"
+              checked={playThirdPlace}
+              onCheckedChange={(checked) => handleGlobalTournamentSettingChange('thirdPlace', checked)}
+              disabled={!!fixture}
+            />
+          </div>
+          {!!fixture && 
+            <div className="col-span-full sm:col-span-1">
+              <p className="text-xs text-muted-foreground">
+                No se puede cambiar una vez generado el fixture.
+              </p>
+            </div>
+          }
 
         </CardContent>
         <CardFooter className="flex justify-between items-center pt-4">

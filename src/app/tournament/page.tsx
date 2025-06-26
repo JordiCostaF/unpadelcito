@@ -265,6 +265,7 @@ export default function TournamentPage() {
         categoriesWithDuplas: categoriesWithDuplasOutput,
         numCourts: form.getValues().duplas.length > 5 ? 4 : 2, // Example, can be adjusted
         matchDuration: 60, // Default
+        playThirdPlace: true,
     };
   
     try {
