@@ -142,15 +142,15 @@ interface GroupScheduleState {
 
 function compareStandingsNumerically(sA: Standing, sB: Standing): number {
   // 1. Puntos (descendente)
-  if (sA.pts !== sB.pts) return sB.pts - sA.pts;
+  if (sA.pts !== sB.pts) return sB.pts - sB.pts;
   // 2. Partidos Ganados (descendente)
-  if (sA.pg !== sB.pg) return sB.pg - sA.pg;
+  if (sA.pg !== sB.pg) return sB.pg - sB.pg;
   // 3. Diferencia de Puntos (descendente)
   const diffA = sA.pf - sA.pc;
   const diffB = sB.pf - sB.pc;
   if (diffA !== diffB) return diffB - diffA;
   // 4. Puntos a Favor (descendente)
-  if (sA.pf !== sB.pf) return sB.pf - sA.pf;
+  if (sA.pf !== sB.pf) return sB.pf - sB.pf;
   // 5. Puntos en Contra (ascendente, menos es mejor)
   if (sA.pc !== sB.pc) return sA.pc - sB.pc;
   // Si todo es igual, se considera empate numérico
@@ -1116,119 +1116,74 @@ const handleDownloadPdfFixture = () => {
       return;
     }
 
-    const doc = new jsPDF();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 20;
-    let yPos = margin;
+    try {
+      const doc = new jsPDF();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 20;
+      let yPos = margin;
 
-    doc.setFontSize(18);
-    doc.text(`Fixture: ${torneo.tournamentName}`, 14, yPos);
-    yPos += 10;
-
-    Object.values(fixture).forEach(catFixture => {
-      const hasContent = (catFixture.groups && catFixture.groups.some(g => g.duplas.length > 0)) || (catFixture.playoffMatches && catFixture.playoffMatches.length > 0);
-      if (!hasContent) return;
-
-      if (yPos > pageHeight - margin) {
-          doc.addPage();
-          yPos = margin;
-      }
-      
-      doc.setFontSize(14);
-      doc.text(`CATEGORÍA: ${catFixture.categoryName}`, 14, yPos);
+      doc.setFontSize(18);
+      doc.text(`Fixture: ${torneo.tournamentName}`, 14, yPos);
       yPos += 10;
 
-      if (catFixture.groups.length > 0) {
-        catFixture.groups.forEach(group => {
-          if (yPos > pageHeight - margin) {
-             doc.addPage();
-             yPos = margin;
-          }
-          doc.setFontSize(12);
-          doc.text(`Posiciones - ${group.name}`, 14, yPos);
-          
-          const standingsHead = [['#', 'Dupla', 'PJ', 'PG', 'PP', 'PF', 'PC', 'DIF', 'Pts']];
-          const standingsBody = [...group.standings]
-            .sort(compareStandingsNumerically)
-            .map((s, idx) => [
-              (idx + 1).toString(),
-              s.duplaName,
-              s.pj.toString(),
-              s.pg.toString(),
-              s.pp.toString(),
-              s.pf.toString(),
-              s.pc.toString(),
-              (s.pf - s.pc).toString(),
-              s.pts.toString()
-            ]);
-          
-          autoTable(doc, {
-            startY: yPos + 7,
-            head: standingsHead,
-            body: standingsBody,
-            theme: 'grid',
-            headStyles: { fillColor: [255, 153, 51] },
-            styles: { fontSize: 8 },
-          });
-          yPos = (doc as any).lastAutoTable.finalY + 10;
-          
-          if (yPos > pageHeight - margin) {
-             doc.addPage();
-             yPos = margin;
-          }
+      Object.values(fixture).forEach(catFixture => {
+        const hasContent = (catFixture.groups && catFixture.groups.some(g => g.duplas.length > 0)) || (catFixture.playoffMatches && catFixture.playoffMatches.length > 0);
+        if (!hasContent) return;
 
-          doc.setFontSize(12);
-          doc.text(`Partidos - ${group.name}`, 14, yPos);
-
-          const matchesHead = [['Ronda', 'Dupla 1', 'Dupla 2', 'Cancha', 'Hora', 'Resultado']];
-          const matchesBody = group.matches.map((match, index) => [
-              `Ronda ${index + 1}`,
-              match.dupla1?.nombre || 'N/A',
-              match.dupla2?.nombre || 'N/A',
-              match.court ? (typeof match.court === 'string' ? match.court : `Cancha ${match.court}`) : 'TBD',
-              match.time || 'TBD',
-              match.status === 'completed' && match.score1 !== undefined && match.score2 !== undefined
-                ? `${match.score1} - ${match.score2}`
-                : 'Pendiente'
-          ]);
-
-          autoTable(doc, {
-            startY: yPos + 7,
-            head: matchesHead,
-            body: matchesBody,
-            theme: 'grid',
-            headStyles: { fillColor: [255, 153, 51] },
-            styles: { fontSize: 8 },
-          });
-          yPos = (doc as any).lastAutoTable.finalY + 15;
-        });
-      }
-
-      if (catFixture.playoffMatches && catFixture.playoffMatches.length > 0) {
         if (yPos > pageHeight - margin) {
-           doc.addPage();
-           yPos = margin;
+            doc.addPage();
+            yPos = margin;
         }
+        
+        doc.setFontSize(14);
+        doc.text(`CATEGORÍA: ${catFixture.categoryName}`, 14, yPos);
+        yPos += 10;
 
-        doc.setFontSize(12);
-        doc.text('PLAYOFFS', 14, yPos);
+        if (catFixture.groups.length > 0) {
+          catFixture.groups.forEach(group => {
+            if (yPos > pageHeight - margin) {
+               doc.addPage();
+               yPos = margin;
+            }
+            doc.setFontSize(12);
+            doc.text(`Posiciones - ${group.name}`, 14, yPos);
+            
+            const standingsHead = [['#', 'Dupla', 'PJ', 'PG', 'PP', 'PF', 'PC', 'DIF', 'Pts']];
+            const standingsBody = [...group.standings]
+              .sort(compareStandingsNumerically)
+              .map((s, idx) => [
+                (idx + 1).toString(),
+                s.duplaName.toString(),
+                s.pj.toString(),
+                s.pg.toString(),
+                s.pp.toString(),
+                s.pf.toString(),
+                s.pc.toString(),
+                (s.pf - s.pc).toString(),
+                s.pts.toString()
+              ]);
+            
+            autoTable(doc, {
+              startY: yPos + 7,
+              head: standingsHead,
+              body: standingsBody,
+              theme: 'grid',
+              headStyles: { fillColor: [255, 153, 51] },
+              styles: { fontSize: 8 },
+            });
+            yPos = (doc as any).lastAutoTable.finalY + 10;
+            
+            if (yPos > pageHeight - margin) {
+               doc.addPage();
+               yPos = margin;
+            }
 
-        const playoffHead = [['Fase', 'Dupla 1', 'Dupla 2', 'Cancha', 'Hora', 'Resultado']];
-        const playoffBody = catFixture.playoffMatches
-            .sort((a,b) => {
-                const stageOrder = (stage: PlayoffMatch['stage']) => {
-                    if (stage === 'final') return 0;
-                    if (stage === 'tercer_puesto') return 1;
-                    if (stage === 'semifinal') return 2;
-                    return 3;
-                };
-                if (stageOrder(a.stage) !== stageOrder(b.stage)) {
-                    return stageOrder(a.stage) - stageOrder(b.stage);
-                }
-                return (a.time || "99:99").localeCompare(b.time || "99:99") || (a.court || "Z99").toString().localeCompare((b.court || "Z99").toString());
-            })
-            .map(match => [
-                match.description || match.stage.charAt(0).toUpperCase() + match.stage.slice(1),
+            doc.setFontSize(12);
+            doc.text(`Partidos - ${group.name}`, 14, yPos);
+
+            const matchesHead = [['Ronda', 'Dupla 1', 'Dupla 2', 'Cancha', 'Hora', 'Resultado']];
+            const matchesBody = group.matches.map((match, index) => [
+                `Ronda ${index + 1}`,
                 match.dupla1?.nombre || 'N/A',
                 match.dupla2?.nombre || 'N/A',
                 match.court ? (typeof match.court === 'string' ? match.court : `Cancha ${match.court}`) : 'TBD',
@@ -1238,21 +1193,75 @@ const handleDownloadPdfFixture = () => {
                   : 'Pendiente'
             ]);
 
-        autoTable(doc, {
-            startY: yPos + 7,
-            head: playoffHead,
-            body: playoffBody,
-            theme: 'grid',
-            headStyles: { fillColor: [255, 153, 51] },
-            styles: { fontSize: 8 },
+            autoTable(doc, {
+              startY: yPos + 7,
+              head: matchesHead,
+              body: matchesBody,
+              theme: 'grid',
+              headStyles: { fillColor: [255, 153, 51] },
+              styles: { fontSize: 8 },
+            });
+            yPos = (doc as any).lastAutoTable.finalY + 15;
+          });
+        }
+
+        if (catFixture.playoffMatches && catFixture.playoffMatches.length > 0) {
+          if (yPos > pageHeight - margin) {
+             doc.addPage();
+             yPos = margin;
+          }
+
+          doc.setFontSize(12);
+          doc.text('PLAYOFFS', 14, yPos);
+
+          const playoffHead = [['Fase', 'Dupla 1', 'Dupla 2', 'Cancha', 'Hora', 'Resultado']];
+          const playoffBody = catFixture.playoffMatches
+              .sort((a,b) => {
+                  const stageOrder = (stage: PlayoffMatch['stage']) => {
+                      if (stage === 'final') return 0;
+                      if (stage === 'tercer_puesto') return 1;
+                      if (stage === 'semifinal') return 2;
+                      return 3;
+                  };
+                  if (stageOrder(a.stage) !== stageOrder(b.stage)) {
+                      return stageOrder(a.stage) - stageOrder(b.stage);
+                  }
+                  return (a.time || "99:99").localeCompare(b.time || "99:99") || (a.court?.toString() || "Z99").localeCompare((b.court?.toString() || "Z99"));
+              })
+              .map(match => [
+                  match.description || match.stage.charAt(0).toUpperCase() + match.stage.slice(1),
+                  match.dupla1?.nombre || 'N/A',
+                  match.dupla2?.nombre || 'N/A',
+                  match.court ? (typeof match.court === 'string' ? match.court : `Cancha ${match.court}`) : 'TBD',
+                  match.time || 'TBD',
+                  match.status === 'completed' && match.score1 !== undefined && match.score2 !== undefined
+                    ? `${match.score1} - ${match.score2}`
+                    : 'Pendiente'
+              ]);
+
+          autoTable(doc, {
+              startY: yPos + 7,
+              head: playoffHead,
+              body: playoffBody,
+              theme: 'grid',
+              headStyles: { fillColor: [255, 153, 51] },
+              styles: { fontSize: 8 },
+          });
+
+          yPos = (doc as any).lastAutoTable.finalY + 15;
+        }
+      });
+      
+      toast({ title: "Descarga Iniciada", description: "El archivo PDF del fixture se está descargando." });
+      doc.save(`fixture_${torneo.tournamentName.replace(/\s+/g, '_')}.pdf`);
+    } catch (error: any) {
+        console.error("Error al generar PDF:", error);
+        toast({
+            title: "Error al generar PDF",
+            description: `Ocurrió un problema: ${error.message || 'Error desconocido'}. Revisa la consola para más detalles.`,
+            variant: "destructive"
         });
-
-        yPos = (doc as any).lastAutoTable.finalY + 15;
-      }
-    });
-
-    doc.save(`fixture_${torneo.tournamentName.replace(/\s+/g, '_')}.pdf`);
-    toast({ title: "Descarga Iniciada", description: "El archivo PDF del fixture se está descargando." });
+    }
 };
 
 
@@ -1641,7 +1650,7 @@ const handleDownloadPdfFixture = () => {
                                                     if (stageOrder(a.stage) !== stageOrder(b.stage)) {
                                                         return stageOrder(a.stage) - stageOrder(b.stage);
                                                     }
-                                                    return (a.time || "99:99").localeCompare(b.time || "99:99") || (a.court || "Z99").toString().localeCompare((b.court || "Z99").toString());
+                                                    return (a.time || "99:99").localeCompare(b.time || "99:99") || (a.court?.toString() || "Z99").localeCompare((b.court?.toString() || "Z99"));
                                                 }).map(match => (
                                                     <li key={match.id} className="p-3 border rounded-md bg-secondary/20 text-sm">
                                                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
@@ -1771,4 +1780,6 @@ export default function ActiveTournamentPage() {
       
 
     
+    
+
     
