@@ -40,6 +40,8 @@ import { useForm, type UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 // Renaming imported types to avoid conflicts if this page also defines its own PlayerFormValues
 export type PlayerFormValues = PlayerFormValuesFromRandom;
@@ -140,9 +142,9 @@ interface GroupScheduleState {
 
 function compareStandingsNumerically(sA: Standing, sB: Standing): number {
   // 1. Puntos (descendente)
-  if (sA.pts !== sB.pts) return sB.pts - sB.pts;
+  if (sA.pts !== sB.pts) return sB.pts - sA.pts;
   // 2. Partidos Ganados (descendente)
-  if (sA.pg !== sB.pg) return sB.pg - sB.pg;
+  if (sA.pg !== sB.pg) return sB.pg - sA.pg;
   // 3. Diferencia de Puntos (descendente)
   const diffA = sA.pf - sA.pc;
   const diffB = sB.pf - sB.pc;
@@ -1108,89 +1110,141 @@ const handleConfirmPlayoffSchedule = () => {
     setIsPlayoffSchedulerDialogOpen(false);
 };
 
-const handleDownloadFixture = () => {
+const handleDownloadPdfFixture = () => {
     if (!fixture || !torneo) {
       toast({ title: "Error", description: "No hay fixture para descargar.", variant: "destructive" });
       return;
     }
 
-    const csvRows: (string | number)[][] = [];
-    const matchHeaders = ['Ronda/Fase', 'Dupla 1', '', 'Dupla 2', 'Cancha', 'Hora', 'Resultado'];
+    const doc = new jsPDF();
+    let yPos = 20;
 
-    csvRows.push([`FIXTURE: ${torneo.tournamentName}`]);
-    csvRows.push([]); // Blank row
+    doc.setFontSize(18);
+    doc.text(`Fixture: ${torneo.tournamentName}`, 14, yPos);
+    yPos += 10;
 
     Object.values(fixture).forEach(catFixture => {
-      csvRows.push([`CATEGORÍA: ${catFixture.categoryName}`]);
-      csvRows.push([]); // Blank row
+      const hasContent = (catFixture.groups && catFixture.groups.some(g => g.duplas.length > 0)) || (catFixture.playoffMatches && catFixture.playoffMatches.length > 0);
+      if (!hasContent) return;
 
-      // Group Matches
+      if (yPos > 250) {
+          doc.addPage();
+          yPos = 20;
+      }
+      
+      doc.setFontSize(14);
+      doc.text(`CATEGORÍA: ${catFixture.categoryName}`, 14, yPos);
+      yPos += 10;
+
       if (catFixture.groups.length > 0) {
         catFixture.groups.forEach(group => {
-          csvRows.push([group.name]);
-          const duplaNames = group.duplas.map(d => d.nombre);
-          csvRows.push(['Duplas en grupo:', ...duplaNames]);
-          csvRows.push(matchHeaders);
+          if (yPos > 260) {
+             doc.addPage();
+             yPos = 20;
+          }
+          doc.setFontSize(12);
+          doc.text(`Posiciones - ${group.name}`, 14, yPos);
           
-          group.matches.forEach((match, index) => {
-            const row = [
+          const standingsHead = [['#', 'Dupla', 'PJ', 'PG', 'PP', 'PF-PC', 'Pts']];
+          const standingsBody = [...group.standings]
+            .sort(compareStandingsNumerically)
+            .map((s, idx) => [
+              idx + 1,
+              s.duplaName,
+              s.pj,
+              s.pg,
+              s.pp,
+              s.pf - s.pc,
+              s.pts
+            ]);
+          
+          autoTable(doc, {
+            startY: yPos + 7,
+            head: standingsHead,
+            body: standingsBody,
+            theme: 'grid',
+            headStyles: { fillColor: [255, 153, 51] },
+            styles: { fontSize: 8 },
+          });
+          yPos = (doc as any).lastAutoTable.finalY + 10;
+          
+          if (yPos > 260) {
+             doc.addPage();
+             yPos = 20;
+          }
+
+          doc.setFontSize(12);
+          doc.text(`Partidos - ${group.name}`, 14, yPos);
+
+          const matchesHead = [['Ronda', 'Dupla 1', 'Dupla 2', 'Cancha', 'Hora', 'Resultado']];
+          const matchesBody = group.matches.map((match, index) => [
               `Ronda ${index + 1}`,
               match.dupla1.nombre,
-              'vs',
               match.dupla2.nombre,
               match.court ? `Cancha ${match.court}` : 'TBD',
               match.time || 'TBD',
               match.status === 'completed' ? `${match.score1} - ${match.score2}` : 'Pendiente'
-            ];
-            csvRows.push(row);
+          ]);
+
+          autoTable(doc, {
+            startY: yPos + 7,
+            head: matchesHead,
+            body: matchesBody,
+            theme: 'grid',
+            headStyles: { fillColor: [255, 153, 51] },
+            styles: { fontSize: 8 },
           });
-          csvRows.push([]); // Blank row after each group
+          yPos = (doc as any).lastAutoTable.finalY + 15;
         });
       }
 
-      // Playoff Matches
       if (catFixture.playoffMatches && catFixture.playoffMatches.length > 0) {
-        csvRows.push(['PLAYOFFS']);
-        csvRows.push(matchHeaders);
-        
-        catFixture.playoffMatches.forEach(match => {
-          const row = [
-            match.description || match.stage, 
-            match.dupla1.nombre,
-            'vs',
-            match.dupla2.nombre,
-            match.court ? `Cancha ${match.court}` : 'TBD',
-            match.time || 'TBD',
-            match.status === 'completed' ? `${match.score1} - ${match.score2}` : 'Pendiente'
-          ];
-          csvRows.push(row);
+        if (yPos > 260) {
+           doc.addPage();
+           yPos = 20;
+        }
+
+        doc.setFontSize(12);
+        doc.text('PLAYOFFS', 14, yPos);
+
+        const playoffHead = [['Fase', 'Dupla 1', 'Dupla 2', 'Cancha', 'Hora', 'Resultado']];
+        const playoffBody = catFixture.playoffMatches
+            .sort((a,b) => {
+                const stageOrder = (stage: PlayoffMatch['stage']) => {
+                    if (stage === 'final') return 0;
+                    if (stage === 'tercer_puesto') return 1;
+                    if (stage === 'semifinal') return 2;
+                    return 3;
+                };
+                if (stageOrder(a.stage) !== stageOrder(b.stage)) {
+                    return stageOrder(a.stage) - stageOrder(b.stage);
+                }
+                return (a.time || "99:99").localeCompare(b.time || "99:99") || (a.court || "Z99").toString().localeCompare((b.court || "Z99").toString());
+            })
+            .map(match => [
+                match.description || match.stage,
+                match.dupla1.nombre,
+                match.dupla2.nombre,
+                match.court ? `Cancha ${match.court}` : 'TBD',
+                match.time || 'TBD',
+                match.status === 'completed' ? `${match.score1} - ${match.score2}` : 'Pendiente'
+            ]);
+
+        autoTable(doc, {
+            startY: yPos + 7,
+            head: playoffHead,
+            body: playoffBody,
+            theme: 'grid',
+            headStyles: { fillColor: [255, 153, 51] },
+            styles: { fontSize: 8 },
         });
-        csvRows.push([]); // Blank row after playoffs
+
+        yPos = (doc as any).lastAutoTable.finalY + 15;
       }
-      
-      csvRows.push([]); // Extra blank row to separate categories
     });
 
-    const escapeCsvField = (field: string | number) => {
-      let fieldStr = String(field ?? "");
-      if (fieldStr.includes(',') || fieldStr.includes('"') || fieldStr.includes('\n')) {
-        fieldStr = `"${fieldStr.replace(/"/g, '""')}"`;
-      }
-      return fieldStr;
-    };
-
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + csvRows.map(e => e.map(escapeCsvField).join(",")).join("\n");
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `fixture_${torneo.tournamentName.replace(/\s+/g, '_')}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    toast({ title: "Descarga Iniciada", description: "El archivo del fixture se está descargando." });
+    doc.save(`fixture_${torneo.tournamentName.replace(/\s+/g, '_')}.pdf`);
+    toast({ title: "Descarga Iniciada", description: "El archivo PDF del fixture se está descargando." });
 };
 
 
@@ -1406,8 +1460,8 @@ const handleDownloadFixture = () => {
             <CardHeader>
                 <div className="flex justify-between items-center">
                     <CardTitle className="text-2xl flex items-center"><TrophyIcon className="mr-2 h-6 w-6 text-primary" /> Planilla del Torneo</CardTitle>
-                    <Button variant="outline" size="sm" onClick={handleDownloadFixture}>
-                        <Download className="mr-2 h-4 w-4" /> Descargar Fixture
+                    <Button variant="outline" size="sm" onClick={handleDownloadPdfFixture}>
+                        <Download className="mr-2 h-4 w-4" /> Descargar Fixture (PDF)
                     </Button>
                 </div>
                 <CardDescription>Define la configuración para cada grupo y programa sus partidos. Luego programa los playoffs.</CardDescription>
