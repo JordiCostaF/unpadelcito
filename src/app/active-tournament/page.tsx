@@ -142,15 +142,15 @@ interface GroupScheduleState {
 
 function compareStandingsNumerically(sA: Standing, sB: Standing): number {
   // 1. Puntos (descendente)
-  if (sA.pts !== sB.pts) return sB.pts - sB.pts;
+  if (sA.pts !== sB.pts) return sB.pts - sA.pts;
   // 2. Partidos Ganados (descendente)
-  if (sA.pg !== sB.pg) return sB.pg - sB.pg;
+  if (sA.pg !== sB.pg) return sB.pg - sA.pg;
   // 3. Diferencia de Puntos (descendente)
   const diffA = sA.pf - sA.pc;
   const diffB = sB.pf - sB.pc;
   if (diffA !== diffB) return diffB - diffA;
   // 4. Puntos a Favor (descendente)
-  if (sA.pf !== sB.pf) return sB.pf - sB.pf;
+  if (sA.pf !== sB.pf) return sB.pf - sA.pf;
   // 5. Puntos en Contra (ascendente, menos es mejor)
   if (sA.pc !== sB.pc) return sA.pc - sB.pc;
   // Si todo es igual, se considera empate numérico
@@ -1134,7 +1134,7 @@ const handleDownloadPdfFixture = () => {
       yPos += 10;
 
       Object.values(fixture).forEach(catFixture => {
-        const hasContent = (catFixture.groups && catFixture.groups.some(g => g.duplas.length > 0)) || (catFixture.playoffMatches && catFixture.playoffMatches.length > 0);
+        const hasContent = (catFixture.groups && catFixture.groups.some(g => g.duplas.length > 0));
         if (!hasContent) return;
 
         checkAndAddPage(20);
@@ -1202,43 +1202,10 @@ const handleDownloadPdfFixture = () => {
             yPos = (doc as any).lastAutoTable.finalY + 15;
           });
         }
-
-        if (catFixture.playoffMatches && catFixture.playoffMatches.length > 0) {
-          checkAndAddPage(40);
-          doc.setFontSize(12);
-          doc.text('PLAYOFFS', 14, yPos);
-
-          const playoffHead = [['Fase', 'Dupla 1', 'Dupla 2', 'Cancha', 'Hora', 'Resultado']];
-          const stageOrderMap: Record<PlayoffMatch['stage'], number> = { 'final': 1, 'tercer_puesto': 2, 'semifinal': 3 };
-          
-          const playoffBody = [...catFixture.playoffMatches]
-              .sort((a, b) => (stageOrderMap[a.stage] || 99) - (stageOrderMap[b.stage] || 99))
-              .map(match => [
-                  String(match.description || (match.stage.charAt(0).toUpperCase() + match.stage.slice(1))),
-                  String(match.dupla1?.nombre ?? 'N/A'),
-                  String(match.dupla2?.nombre ?? 'N/A'),
-                  String(match.court ?? 'TBD'),
-                  String(match.time ?? 'TBD'),
-                  match.status === 'completed' && match.score1 !== undefined && match.score2 !== undefined
-                    ? `${match.score1} - ${match.score2}`
-                    : 'Pendiente'
-              ]);
-
-          autoTable(doc, {
-              startY: yPos + 5,
-              head: playoffHead,
-              body: playoffBody,
-              theme: 'grid',
-              headStyles: { fillColor: [255, 153, 51] },
-              styles: { fontSize: 8 },
-          });
-
-          yPos = (doc as any).lastAutoTable.finalY + 15;
-        }
       });
       
       toast({ title: "Descarga Iniciada", description: "El archivo PDF del fixture se está descargando." });
-      doc.save(`fixture_${torneo.tournamentName.replace(/\s+/g, '_')}.pdf`);
+      doc.save(`fixture_grupos_${torneo.tournamentName.replace(/\s+/g, '_')}.pdf`);
 
     } catch (error) {
       console.error("Error al generar PDF:", error);
