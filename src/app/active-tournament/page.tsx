@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power, Save, PlayCircle, Edit, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power, Save, PlayCircle, Edit, ChevronLeft, ChevronRight, AlertTriangle, Download } from 'lucide-react';
 import React, { useEffect, useState, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -286,7 +286,7 @@ function generateAndOrderGroupMatches(duplasInGroup: Dupla[], groupId: string): 
 
   // 2. Organizar los partidos evitando repeticiones seguidas, como en el ejemplo de Python
   const scheduledOrderTuples: [Dupla, Dupla][] = [];
-  const remainingMatchTuples = [...allPossibleMatchTuples];
+  let remainingMatchTuples = [...allPossibleMatchTuples];
 
   // Empezamos con el primer partido de la lista
   if (remainingMatchTuples.length > 0) {
@@ -299,6 +299,7 @@ function generateAndOrderGroupMatches(duplasInGroup: Dupla[], groupId: string): 
     let foundNextMatch = false;
 
     // Buscar el siguiente partido donde ninguna dupla se repita
+    let nextMatchIndex = -1;
     for (let i = 0; i < remainingMatchTuples.length; i++) {
       const currentCandidateTuple = remainingMatchTuples[i];
       const [candidateDupla1, candidateDupla2] = currentCandidateTuple;
@@ -310,16 +311,17 @@ function generateAndOrderGroupMatches(duplasInGroup: Dupla[], groupId: string): 
         candidateDupla2.id !== lastDupla2.id
       ) {
         // Se encontró un partido adecuado
-        scheduledOrderTuples.push(remainingMatchTuples.splice(i, 1)[0]);
-        foundNextMatch = true;
+        nextMatchIndex = i;
         break; // Salir del bucle for
       }
     }
 
-    // Si el bucle for terminó sin encontrar un partido (sin 'break')
-    if (!foundNextMatch) {
-      // Se agrega el primer partido que quede en la lista de restantes
-      scheduledOrderTuples.push(remainingMatchTuples.shift()!);
+    // Si el bucle for terminó y encontramos un partido
+    if (nextMatchIndex !== -1) {
+        scheduledOrderTuples.push(remainingMatchTuples.splice(nextMatchIndex, 1)[0]);
+    } else if (remainingMatchTuples.length > 0) {
+        // Si no se encontró un partido sin repetición, se agrega el primer partido que quede
+        scheduledOrderTuples.push(remainingMatchTuples.shift()!);
     }
   }
 
@@ -419,7 +421,7 @@ function ActiveTournamentPageComponent() {
                 const p1Input = savedDuplaObject.jugadores[0];
                 const p2Input = savedDuplaObject.jugadores[1];
 
-                if (!p1Input || !p2Input || !(p1Input.rut || p1Input.name) || !(p2Input.rut || p2Input.name) || !p1Input.name || !p2Input.name) {
+                if (!p1Input || !p2Input || !p1Input.name || !p2Input.name) {
                     console.warn('Skipping dupla with invalid player data:', savedDuplaObject);
                     return null;
                 }
@@ -1106,6 +1108,74 @@ const handleConfirmPlayoffSchedule = () => {
     setIsPlayoffSchedulerDialogOpen(false);
 };
 
+const handleDownloadFixture = () => {
+    if (!fixture || !torneo) {
+      toast({ title: "Error", description: "No hay fixture para descargar.", variant: "destructive" });
+      return;
+    }
+
+    const csvRows = [
+      ['Categoría', 'Fase/Grupo', 'Ronda/Descripción', 'Dupla 1', 'Dupla 2', 'Cancha Asignada', 'Hora Programada', 'Resultado']
+    ];
+
+    Object.values(fixture).forEach(catFixture => {
+      // Group Matches
+      catFixture.groups.forEach(group => {
+        group.matches.forEach((match, index) => {
+          const row = [
+            catFixture.categoryName,
+            group.name,
+            `Ronda ${index + 1}`,
+            match.dupla1.nombre,
+            match.dupla2.nombre,
+            match.court ? String(match.court) : 'TBD',
+            match.time || 'TBD',
+            match.status === 'completed' ? `${match.score1} - ${match.score2}` : 'Pendiente'
+          ];
+          csvRows.push(row);
+        });
+      });
+
+      // Playoff Matches
+      if (catFixture.playoffMatches) {
+        catFixture.playoffMatches.forEach(match => {
+          const row = [
+            catFixture.categoryName,
+            'Playoffs',
+            match.description, 
+            match.dupla1.nombre,
+            match.dupla2.nombre,
+            match.court ? String(match.court) : 'TBD',
+            match.time || 'TBD',
+            match.status === 'completed' ? `${match.score1} - ${match.score2}` : 'Pendiente'
+          ];
+          csvRows.push(row);
+        });
+      }
+    });
+
+    const escapeCsvField = (field: string | number) => {
+      let fieldStr = String(field ?? "");
+      if (fieldStr.includes(',') || fieldStr.includes('"') || fieldStr.includes('\n')) {
+        fieldStr = `"${fieldStr.replace(/"/g, '""')}"`;
+      }
+      return fieldStr;
+    };
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + csvRows.map(e => e.map(escapeCsvField).join(",")).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `fixture_${torneo.tournamentName.replace(/\s+/g, '_')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast({ title: "Descarga Iniciada", description: "El archivo del fixture se está descargando." });
+};
+
 
   if (isLoading) {
     return (
@@ -1316,7 +1386,12 @@ const handleConfirmPlayoffSchedule = () => {
       {fixture && Object.keys(fixture).length > 0 && (
         <Card className="w-full max-w-4xl mb-8 shadow-lg">
             <CardHeader>
-                <CardTitle className="text-2xl flex items-center"><TrophyIcon className="mr-2 h-6 w-6 text-primary" /> Planilla del Torneo</CardTitle>
+                <div className="flex justify-between items-center">
+                    <CardTitle className="text-2xl flex items-center"><TrophyIcon className="mr-2 h-6 w-6 text-primary" /> Planilla del Torneo</CardTitle>
+                    <Button variant="outline" size="sm" onClick={handleDownloadFixture}>
+                        <Download className="mr-2 h-4 w-4" /> Descargar Fixture
+                    </Button>
+                </div>
                 <CardDescription>Define la configuración para cada grupo y programa sus partidos. Luego programa los playoffs.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -1614,3 +1689,5 @@ export default function ActiveTournamentPage() {
   );
 }
       
+
+    
