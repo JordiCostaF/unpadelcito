@@ -142,9 +142,9 @@ interface GroupScheduleState {
 
 function compareStandingsNumerically(sA: Standing, sB: Standing): number {
   // 1. Puntos (descendente)
-  if (sA.pts !== sB.pts) return sB.pts - sA.pts;
+  if (sA.pts !== sB.pts) return sB.pts - sB.pts;
   // 2. Partidos Ganados (descendente)
-  if (sA.pg !== sB.pg) return sB.pg - sA.pg;
+  if (sA.pg !== sB.pg) return sB.pg - sB.pg;
   // 3. Diferencia de Puntos (descendente)
   const diffA = sA.pf - sA.pc;
   const diffB = sB.pf - sB.pc;
@@ -1119,11 +1119,11 @@ const handleDownloadPdfFixture = () => {
     try {
       const doc = new jsPDF();
       const pageHeight = doc.internal.pageSize.getHeight();
-      const margin = 20;
+      const margin = 15;
       let yPos = margin;
 
-      const checkAndAddPage = () => {
-        if (yPos > pageHeight - margin) {
+      const checkAndAddPage = (spaceNeeded: number) => {
+        if (yPos + spaceNeeded > pageHeight - margin) {
           doc.addPage();
           yPos = margin;
         }
@@ -1137,8 +1137,7 @@ const handleDownloadPdfFixture = () => {
         const hasContent = (catFixture.groups && catFixture.groups.some(g => g.duplas.length > 0)) || (catFixture.playoffMatches && catFixture.playoffMatches.length > 0);
         if (!hasContent) return;
 
-        checkAndAddPage();
-        
+        checkAndAddPage(20);
         doc.setFontSize(14);
         doc.text(`CATEGORÍA: ${catFixture.categoryName}`, 14, yPos);
         yPos += 10;
@@ -1147,7 +1146,7 @@ const handleDownloadPdfFixture = () => {
           catFixture.groups.forEach(group => {
             if (group.duplas.length === 0) return;
 
-            checkAndAddPage();
+            checkAndAddPage(40);
             doc.setFontSize(12);
             doc.text(`Posiciones - ${group.name}`, 14, yPos);
             
@@ -1155,19 +1154,19 @@ const handleDownloadPdfFixture = () => {
             const standingsBody = [...group.standings]
               .sort(compareStandingsNumerically)
               .map((s, idx) => [
-                (idx + 1).toString(),
+                String(idx + 1),
                 String(s.duplaName ?? 'N/A'),
-                String(s.pj),
-                String(s.pg),
-                String(s.pp),
-                String(s.pf),
-                String(s.pc),
-                String(s.pf - s.pc),
-                String(s.pts)
+                String(s.pj ?? 0),
+                String(s.pg ?? 0),
+                String(s.pp ?? 0),
+                String(s.pf ?? 0),
+                String(s.pc ?? 0),
+                String((s.pf || 0) - (s.pc || 0)),
+                String(s.pts ?? 0)
               ]);
             
             autoTable(doc, {
-              startY: yPos + 7,
+              startY: yPos + 5,
               head: standingsHead,
               body: standingsBody,
               theme: 'grid',
@@ -1176,7 +1175,7 @@ const handleDownloadPdfFixture = () => {
             });
             yPos = (doc as any).lastAutoTable.finalY + 10;
             
-            checkAndAddPage();
+            checkAndAddPage(40);
             doc.setFontSize(12);
             doc.text(`Partidos - ${group.name}`, 14, yPos);
 
@@ -1193,7 +1192,7 @@ const handleDownloadPdfFixture = () => {
             ]);
 
             autoTable(doc, {
-              startY: yPos + 7,
+              startY: yPos + 5,
               head: matchesHead,
               body: matchesBody,
               theme: 'grid',
@@ -1205,14 +1204,13 @@ const handleDownloadPdfFixture = () => {
         }
 
         if (catFixture.playoffMatches && catFixture.playoffMatches.length > 0) {
-          checkAndAddPage();
-
+          checkAndAddPage(40);
           doc.setFontSize(12);
           doc.text('PLAYOFFS', 14, yPos);
 
           const playoffHead = [['Fase', 'Dupla 1', 'Dupla 2', 'Cancha', 'Hora', 'Resultado']];
           const stageOrderMap: Record<PlayoffMatch['stage'], number> = { 'final': 1, 'tercer_puesto': 2, 'semifinal': 3 };
-
+          
           const playoffBody = [...catFixture.playoffMatches]
               .sort((a, b) => (stageOrderMap[a.stage] || 99) - (stageOrderMap[b.stage] || 99))
               .map(match => [
@@ -1227,7 +1225,7 @@ const handleDownloadPdfFixture = () => {
               ]);
 
           autoTable(doc, {
-              startY: yPos + 7,
+              startY: yPos + 5,
               head: playoffHead,
               body: playoffBody,
               theme: 'grid',
@@ -1241,6 +1239,7 @@ const handleDownloadPdfFixture = () => {
       
       toast({ title: "Descarga Iniciada", description: "El archivo PDF del fixture se está descargando." });
       doc.save(`fixture_${torneo.tournamentName.replace(/\s+/g, '_')}.pdf`);
+
     } catch (error) {
       console.error("Error al generar PDF:", error);
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1251,7 +1250,6 @@ const handleDownloadPdfFixture = () => {
       });
     }
 };
-
 
 
   if (isLoading) {
@@ -1768,6 +1766,8 @@ export default function ActiveTournamentPage() {
       
 
     
+    
+
     
 
     
