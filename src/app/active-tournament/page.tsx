@@ -1118,101 +1118,111 @@ const handleDownloadPdfFixture = () => {
 
     try {
       const doc = new jsPDF();
-      const pageHeight = doc.internal.pageSize.getHeight();
-      const margin = 15;
-      let yPos = margin;
-
-      const checkAndAddPage = (spaceNeeded: number) => {
-        if (yPos + spaceNeeded > pageHeight - margin) {
-          doc.addPage();
-          yPos = margin;
-        }
-      };
+      let yPos = 15; // Initial Y position
 
       doc.setFontSize(18);
-      doc.text(`Fixture: ${torneo.tournamentName}`, 14, yPos);
-      yPos += 10;
+      doc.text(`Fixture de Grupos: ${torneo.tournamentName}`, 14, yPos);
+      yPos += 15;
 
-      Object.values(fixture).forEach(catFixture => {
-        const hasContent = (catFixture.groups && catFixture.groups.some(g => g.duplas.length > 0));
-        if (!hasContent) return;
+      for (const catFixture of Object.values(fixture)) {
+        const hasGroupsWithDuplas = catFixture.groups && catFixture.groups.some(g => g.duplas.length > 0);
+        if (!hasGroupsWithDuplas) continue;
 
-        checkAndAddPage(20);
+        if (yPos > 250) { 
+          doc.addPage();
+          yPos = 15;
+        }
+
         doc.setFontSize(14);
         doc.text(`CATEGORÍA: ${catFixture.categoryName}`, 14, yPos);
         yPos += 10;
 
-        if (catFixture.groups.length > 0) {
-          catFixture.groups.forEach(group => {
-            if (group.duplas.length === 0) return;
+        for (const group of catFixture.groups) {
+          if (group.duplas.length === 0) continue;
 
-            checkAndAddPage(40);
-            doc.setFontSize(12);
-            doc.text(`Posiciones - ${group.name}`, 14, yPos);
-            
-            const standingsHead = [['#', 'Dupla', 'PJ', 'PG', 'PP', 'PF', 'PC', 'DIF', 'Pts']];
-            const standingsBody = [...group.standings]
-              .sort(compareStandingsNumerically)
-              .map((s, idx) => [
-                String(idx + 1),
-                String(s.duplaName ?? 'N/A'),
-                String(s.pj ?? 0),
-                String(s.pg ?? 0),
-                String(s.pp ?? 0),
-                String(s.pf ?? 0),
-                String(s.pc ?? 0),
-                String((s.pf || 0) - (s.pc || 0)),
-                String(s.pts ?? 0)
-              ]);
-            
-            autoTable(doc, {
-              startY: yPos + 5,
-              head: standingsHead,
-              body: standingsBody,
-              theme: 'grid',
-              headStyles: { fillColor: [255, 153, 51] },
-              styles: { fontSize: 8 },
-            });
-            yPos = (doc as any).lastAutoTable.finalY + 10;
-            
-            checkAndAddPage(40);
-            doc.setFontSize(12);
-            doc.text(`Partidos - ${group.name}`, 14, yPos);
-
-            const matchesHead = [['Ronda', 'Dupla 1', 'Dupla 2', 'Cancha', 'Hora', 'Resultado']];
-            const matchesBody = group.matches.map((match, index) => [
-                `Ronda ${index + 1}`,
-                String(match.dupla1?.nombre ?? 'N/A'),
-                String(match.dupla2?.nombre ?? 'N/A'),
-                String(match.court ?? 'TBD'),
-                String(match.time ?? 'TBD'),
-                match.status === 'completed' && match.score1 !== undefined && match.score2 !== undefined
-                  ? `${match.score1} - ${match.score2}`
-                  : 'Pendiente'
+          // Standings Table
+          if (yPos > 220) {
+            doc.addPage();
+            yPos = 15;
+          }
+          doc.setFontSize(12);
+          doc.text(`Posiciones - ${group.name}`, 14, yPos);
+          
+          const standingsHead = [['#', 'Dupla', 'PJ', 'PG', 'PP', 'DIF', 'Pts']];
+          const standingsBody = [...group.standings]
+            .sort(compareStandingsNumerically)
+            .map((s, idx) => [
+              String(idx + 1),
+              String(s?.duplaName ?? 'N/A'),
+              String(s?.pj ?? 0),
+              String(s?.pg ?? 0),
+              String(s?.pp ?? 0),
+              String((s?.pf ?? 0) - (s?.pc ?? 0)),
+              String(s?.pts ?? 0)
             ]);
 
-            autoTable(doc, {
-              startY: yPos + 5,
-              head: matchesHead,
-              body: matchesBody,
-              theme: 'grid',
-              headStyles: { fillColor: [255, 153, 51] },
-              styles: { fontSize: 8 },
-            });
-            yPos = (doc as any).lastAutoTable.finalY + 15;
+          autoTable(doc, {
+            startY: yPos + 5,
+            head: standingsHead,
+            body: standingsBody,
+            theme: 'grid',
+            headStyles: { fillColor: [255, 153, 51] },
+            styles: { fontSize: 8 },
           });
+
+          if ((doc as any).lastAutoTable && (doc as any).lastAutoTable.finalY) {
+            yPos = (doc as any).lastAutoTable.finalY + 15;
+          } else {
+             yPos += 50; // Fallback
+          }
+
+          // Matches Table
+          if (yPos > 220) {
+            doc.addPage();
+            yPos = 15;
+          }
+          doc.setFontSize(12);
+          doc.text(`Partidos - ${group.name}`, 14, yPos);
+
+          const matchesHead = [['Ronda', 'Dupla 1', 'Dupla 2', 'Cancha', 'Hora', 'Resultado']];
+          const matchesBody = group.matches.map((match, index) => [
+              `Ronda ${index + 1}`,
+              String(match?.dupla1?.nombre ?? 'N/A'),
+              String(match?.dupla2?.nombre ?? 'N/A'),
+              String(match?.court ?? 'TBD'),
+              String(match?.time ?? 'TBD'),
+              (match?.status === 'completed' && match.score1 !== undefined && match.score2 !== undefined)
+                ? `${match.score1} - ${match.score2}`
+                : 'Pendiente'
+          ]);
+
+          autoTable(doc, {
+            startY: yPos + 5,
+            head: matchesHead,
+            body: matchesBody,
+            theme: 'grid',
+            headStyles: { fillColor: [255, 153, 51] },
+            styles: { fontSize: 8 },
+          });
+          
+          if ((doc as any).lastAutoTable && (doc as any).lastAutoTable.finalY) {
+            yPos = (doc as any).lastAutoTable.finalY + 15;
+          } else {
+             yPos += 50; // Fallback
+          }
         }
-      });
+      }
       
+      const safeFilename = `fixture_grupos_${torneo.tournamentName.replace(/[^a-zA-Z0-9 -]/g, '').replace(/\s+/g, '_')}.pdf`;
       toast({ title: "Descarga Iniciada", description: "El archivo PDF del fixture se está descargando." });
-      doc.save(`fixture_grupos_${torneo.tournamentName.replace(/\s+/g, '_')}.pdf`);
+      doc.save(safeFilename);
 
     } catch (error) {
       console.error("Error al generar PDF:", error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       toast({
           title: "Error al generar PDF",
-          description: `Ocurrió un problema: ${errorMessage}. Revisa la consola para más detalles.`,
+          description: `Ocurrió un problema: ${errorMessage}.`,
           variant: "destructive"
       });
     }
