@@ -1,14 +1,14 @@
 
 "use client";
 
-import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power, Save, PlayCircle, Edit, ChevronLeft, ChevronRight, AlertTriangle, Share2, Play, Pause, RotateCcw, ArrowUp, ArrowDown, PlusCircle } from 'lucide-react';
-import React, { useEffect, useState, useCallback, Suspense, useRef } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power, Save, PlayCircle, Edit, ChevronLeft, ChevronRight, AlertTriangle, Share2, Play, Pause, RotateCcw, ArrowUp, ArrowDown, PlusCircle } from "lucide-react";
+import React, { useEffect, useState, useCallback, Suspense, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import type { PlayerFormValues as PlayerFormValuesFromRandom, CategoryFormValues as CategoryFormValuesFromRandom } from '../random-tournament/page';
+import type { PlayerFormValues as PlayerFormValuesFromRandom, CategoryFormValues as CategoryFormValuesFromRandom } from "../random-tournament/page";
 import { format, parse, addMinutes, setHours, setMinutes, isValid } from "date-fns";
 import { es } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator';
+import { Separator } from "@/components/ui/separator";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,9 +48,9 @@ import { useForm, type UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Switch } from '@/components/ui/switch';
-import html2canvas from 'html2canvas';
-import { ShareableFixture } from '@/components/ShareableFixture';
+import { Switch } from "@/components/ui/switch";
+import html2canvas from "html2canvas";
+import { ShareableFixture } from "@/components/ShareableFixture";
 
 
 // Renaming imported types to avoid conflicts if this page also defines its own PlayerFormValues
@@ -473,7 +473,7 @@ function ActiveTournamentPageComponent() {
   // Timer related state
   const [groupTimers, setGroupTimers] = useState<Record<string, GroupTimerState>>({});
   const [activeTimers, setActiveTimers] = useState<ActiveTimerInfo[]>([]);
-  const [isAnyTimerActive, setIsAnyTimerActive] = useState(false);
+  const isAnyTimerActive = Object.values(groupTimers).some(t => t.isActive);
   const prevGroupTimers = usePrevious(groupTimers);
 
 
@@ -494,48 +494,45 @@ function ActiveTournamentPageComponent() {
 
   // --- TIMER LOGIC REFACTOR ---
 
-  // 1. Effect to determine if any timer is active
-  useEffect(() => {
-    const hasActiveTimer = Object.values(groupTimers).some(t => t.isActive);
-    setIsAnyTimerActive(hasActiveTimer);
-  }, [groupTimers]);
-
-  // 2. Effect for TICKING the timers down. This is stable and only depends on isAnyTimerActive.
+  // 1. Effect for TICKING the timers down. This is stable and only depends on isAnyTimerActive.
   useEffect(() => {
     if (!isAnyTimerActive) {
       return; // No active timers, do nothing.
     }
 
     const interval = setInterval(() => {
-      setGroupTimers(prevTimers => {
-        const nextTimers = { ...prevTimers };
-        let hasChanged = false;
-        
-        Object.keys(nextTimers).forEach(groupId => {
-          const timer = nextTimers[groupId];
-          if (timer.isActive && timer.timeRemaining > 0) {
-            const newTimeRemaining = timer.timeRemaining - 1;
-            
-            // Create a new object for the updated timer, ensuring immutability
-            nextTimers[groupId] = {
-              ...timer,
-              timeRemaining: newTimeRemaining,
-              // Automatically set isActive to false when time runs out
-              isActive: newTimeRemaining > 0, 
-            };
-            hasChanged = true;
-          }
+        setGroupTimers(prevTimers => {
+            const nextTimers = { ...prevTimers };
+            let hasChanged = false;
+
+            Object.keys(nextTimers).forEach(groupId => {
+                const timer = nextTimers[groupId];
+                if (timer.isActive && timer.timeRemaining > 0) {
+                    // This is an immutable update.
+                    nextTimers[groupId] = {
+                        ...timer,
+                        timeRemaining: timer.timeRemaining - 1,
+                    };
+                    hasChanged = true;
+                } else if (timer.isActive && timer.timeRemaining <= 0) {
+                    // Also an immutable update to stop the timer.
+                    nextTimers[groupId] = {
+                        ...timer,
+                        timeRemaining: 0,
+                        isActive: false,
+                    };
+                    hasChanged = true;
+                }
+            });
+
+            return hasChanged ? nextTimers : prevTimers;
         });
-        
-        // Only return a new object if something actually changed
-        return hasChanged ? nextTimers : prevTimers;
-      });
     }, 1000);
 
     return () => clearInterval(interval);
   }, [isAnyTimerActive]);
 
-  // 3. Effect for NOTIFYING based on timer changes. This runs when timers state changes.
+  // 2. Effect for NOTIFYING based on timer changes. This runs when timers state changes.
   useEffect(() => {
     if (!prevGroupTimers || !groupTimers) return;
 
@@ -581,10 +578,9 @@ function ActiveTournamentPageComponent() {
 
   const handleTimerControl = (groupId: string, action: 'start' | 'pause' | 'reset' | 'addTime', minutesToAdd?: number) => {
       setGroupTimers(prev => {
-          const timer = prev[groupId];
-          if (!timer) return prev;
-
           const newTimers = { ...prev };
+          const timer = newTimers[groupId];
+          if (!timer) return prev;
 
           switch(action) {
               case 'start':
@@ -2275,5 +2271,3 @@ export default function ActiveTournamentPage() {
     </Suspense>
   );
 }
-
-    
