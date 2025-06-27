@@ -387,6 +387,7 @@ function ActiveTournamentPageComponent() {
   // Timer related state
   const [groupTimers, setGroupTimers] = useState<Record<string, GroupTimerState>>({});
   const [activeTimers, setActiveTimers] = useState<ActiveTimerInfo[]>([]);
+  const [isAnyTimerActive, setIsAnyTimerActive] = useState(false);
 
 
   const [isPlayoffSchedulerDialogOpen, setIsPlayoffSchedulerDialogOpen] = useState(false);
@@ -401,49 +402,47 @@ function ActiveTournamentPageComponent() {
   const [isSharing, setIsSharing] = useState(false);
 
   // Timer Countdown Logic
+  // This effect determines if an interval should be running at all.
   useEffect(() => {
-    const activeTimerExists = Object.values(groupTimers).some(t => t.isActive);
-    if (!activeTimerExists) {
-        return; // No active timers, no need for an interval.
+    const hasActiveTimer = Object.values(groupTimers).some(t => t.isActive);
+    setIsAnyTimerActive(hasActiveTimer);
+  }, [groupTimers]);
+
+  // This effect runs the interval itself. It only runs when `isAnyTimerActive` changes.
+  useEffect(() => {
+    if (!isAnyTimerActive) {
+      return; // Stop if no timers are active.
     }
 
     const interval = setInterval(() => {
-        setGroupTimers(prev => {
-            const newTimers = { ...prev };
-            let timerHasEnded = false;
-            let endedGroupName = '';
-            let endedCategoryName = '';
+      setGroupTimers(prevTimers => {
+        const newTimers = { ...prevTimers };
+        let hasChanged = false;
 
-            for (const groupId in newTimers) {
-                if (newTimers[groupId].isActive && newTimers[groupId].timeRemaining > 0) {
-                    newTimers[groupId].timeRemaining -= 1;
-                } else if (newTimers[groupId].isActive && newTimers[groupId].timeRemaining <= 0) {
-                    newTimers[groupId].isActive = false;
-                    newTimers[groupId].timeRemaining = 0;
-                    timerHasEnded = true;
+        for (const groupId in newTimers) {
+          if (newTimers[groupId].isActive && newTimers[groupId].timeRemaining > 0) {
+            newTimers[groupId].timeRemaining -= 1;
+            hasChanged = true;
 
-                    // Find group name for toast message from activeTimers state
-                    const timerInfo = activeTimers.find(t => t.groupId === groupId);
-                    if (timerInfo) {
-                      endedGroupName = timerInfo.groupName;
-                      endedCategoryName = timerInfo.categoryName;
-                    }
-                }
-            }
-
-            if (timerHasEnded) {
+            if (newTimers[groupId].timeRemaining === 0) {
+              newTimers[groupId].isActive = false; // Stop the timer
+              
+              const timerInfo = activeTimers.find(t => t.groupId === groupId);
+              if (timerInfo) {
                 toast({
-                    title: "¡Tiempo Terminado!",
-                    description: `El tiempo para ${endedGroupName} (${endedCategoryName}) ha finalizado.`,
+                  title: "¡Tiempo Terminado!",
+                  description: `El tiempo para ${timerInfo.groupName} (${timerInfo.categoryName}) ha finalizado.`,
                 });
+              }
             }
-
-            return newTimers;
-        });
-    }, 1000);
+          }
+        }
+        return hasChanged ? newTimers : prevTimers;
+      });
+    }, 1000); // Correct interval of 1 second
 
     return () => clearInterval(interval);
-  }, [groupTimers, activeTimers, toast]);
+  }, [isAnyTimerActive, activeTimers, toast]);
 
 
   const handleTimerControl = (groupId: string, action: 'start' | 'pause' | 'reset') => {
