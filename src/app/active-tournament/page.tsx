@@ -150,6 +150,14 @@ interface GroupTimerState {
   initialDuration: number; // in seconds
 }
 
+interface ActiveTimerInfo {
+  groupId: string;
+  groupName: string;
+  categoryId: string;
+  categoryName: string;
+  court: string | number;
+}
+
 
 function compareStandingsNumerically(sA: Standing, sB: Standing): number {
   // 1. Puntos (descendente)
@@ -373,7 +381,10 @@ function ActiveTournamentPageComponent() {
   const [isResultModalOpen, setIsResultModalOpen] = useState(false);
   const [currentEditingMatch, setCurrentEditingMatch] = useState<(Match | PlayoffMatch | null) & { categoryId?: string; groupOriginId?: string }>(null);
   const [groupScheduleSettings, setGroupScheduleSettings] = useState<GroupScheduleState>({});
+  
+  // Timer related state
   const [groupTimers, setGroupTimers] = useState<Record<string, GroupTimerState>>({});
+  const [activeTimers, setActiveTimers] = useState<ActiveTimerInfo[]>([]);
 
 
   const [isPlayoffSchedulerDialogOpen, setIsPlayoffSchedulerDialogOpen] = useState(false);
@@ -399,6 +410,7 @@ function ActiveTournamentPageComponent() {
             const newTimers = { ...prev };
             let timerHasEnded = false;
             let endedGroupName = '';
+            let endedCategoryName = '';
 
             for (const groupId in newTimers) {
                 if (newTimers[groupId].isActive && newTimers[groupId].timeRemaining > 0) {
@@ -408,15 +420,11 @@ function ActiveTournamentPageComponent() {
                     newTimers[groupId].timeRemaining = 0;
                     timerHasEnded = true;
 
-                    // Find group name for toast message
-                    if (fixture) {
-                        for (const catFixture of Object.values(fixture)) {
-                            const group = catFixture.groups.find(g => g.id === groupId);
-                            if (group) {
-                                endedGroupName = group.name;
-                                break;
-                            }
-                        }
+                    // Find group name for toast message from activeTimers state
+                    const timerInfo = activeTimers.find(t => t.groupId === groupId);
+                    if (timerInfo) {
+                      endedGroupName = timerInfo.groupName;
+                      endedCategoryName = timerInfo.categoryName;
                     }
                 }
             }
@@ -424,7 +432,7 @@ function ActiveTournamentPageComponent() {
             if (timerHasEnded) {
                 toast({
                     title: "¡Tiempo Terminado!",
-                    description: `El tiempo para ${endedGroupName || 'un grupo'} ha finalizado.`,
+                    description: `El tiempo para ${endedGroupName} (${endedCategoryName}) ha finalizado.`,
                 });
             }
 
@@ -433,7 +441,7 @@ function ActiveTournamentPageComponent() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [groupTimers, fixture, toast]);
+  }, [groupTimers, activeTimers, toast]);
 
 
   const handleTimerControl = (groupId: string, action: 'start' | 'pause' | 'reset') => {
@@ -609,10 +617,16 @@ function ActiveTournamentPageComponent() {
         if (storedFixture) {
           const parsedFixture = JSON.parse(storedFixture);
           setFixture(parsedFixture);
+          
           const initialGroupSettings: GroupScheduleState = {};
           const initialTimers: Record<string, GroupTimerState> = {};
+          const loadedActiveTimers: ActiveTimerInfo[] = [];
+
           if (parsedFixture) {
             Object.values(parsedFixture).forEach((catFix: any) => {
+                const categoryData = parsedTorneo.categoriesWithDuplas.find(c => c.id === catFix.categoryId);
+                const categoryName = categoryData ? `${categoryData.type} - ${categoryData.level}` : "Categoría Desconocida";
+                
                 (catFix.groups || []).forEach((group: Group) => {
                     const duration = group.groupMatchDuration || parsedTorneo.matchDuration || 60;
                     initialGroupSettings[group.id] = {
@@ -625,21 +639,34 @@ function ActiveTournamentPageComponent() {
                         timeRemaining: duration * 60,
                         initialDuration: duration * 60,
                     };
+                    if (group.groupAssignedCourt && group.groupStartTime) {
+                        loadedActiveTimers.push({
+                            groupId: group.id,
+                            groupName: group.name,
+                            categoryId: catFix.categoryId,
+                            categoryName: categoryName,
+                            court: group.groupAssignedCourt
+                        });
+                    }
                 });
             });
           }
           setGroupScheduleSettings(initialGroupSettings);
           setGroupTimers(initialTimers);
+          setActiveTimers(loadedActiveTimers);
+
         } else {
           setFixture(null);
           setGroupScheduleSettings({});
           setGroupTimers({});
+          setActiveTimers([]);
         }
       } else {
         setTorneo(null);
         setFixture(null);
         setGroupScheduleSettings({});
         setGroupTimers({});
+        setActiveTimers([]);
         if (nameToLoad) {
             toast({ title: "Torneo no encontrado", description: `No se encontró el torneo "${nameToLoad}".`, variant: "destructive" });
         }
@@ -651,6 +678,7 @@ function ActiveTournamentPageComponent() {
       setFixture(null);
       setGroupScheduleSettings({});
       setGroupTimers({});
+      setActiveTimers([]);
     }
     setIsLoading(false);
   }, [toast]);
@@ -849,6 +877,7 @@ function ActiveTournamentPageComponent() {
     setFixture(newFixture);
     setGroupScheduleSettings(initialGroupSettings);
     setGroupTimers(newTimersState);
+    setActiveTimers([]); // Reset active timers on new fixture
     if (torneo) {
       sessionStorage.setItem(`fixture_${torneo.tournamentName}`, JSON.stringify(newFixture));
     }
@@ -933,6 +962,27 @@ function ActiveTournamentPageComponent() {
         currentMatchDateTime = addMinutes(currentMatchDateTime, groupMatchDuration);
     }
 
+    const categoryName = categoryFixture ? categoryFixture.categoryName : 'Categoría';
+    const newTimerInfo: ActiveTimerInfo = {
+        groupId: groupId,
+        groupName: groupToSchedule.name,
+        categoryId: categoryId,
+        categoryName: categoryName,
+        court: assignedCourt,
+    };
+
+    setActiveTimers(prev => {
+        const existingIndex = prev.findIndex(t => t.groupId === groupId);
+        const updatedTimers = [...prev];
+        if (existingIndex > -1) {
+            updatedTimers[existingIndex] = newTimerInfo;
+        } else {
+            updatedTimers.push(newTimerInfo);
+        }
+        return updatedTimers;
+    });
+
+
     setFixture(newFixture);
     sessionStorage.setItem(`fixture_${torneo.tournamentName}`, JSON.stringify(newFixture));
     toast({ title: "Grupo Programado", description: `Partidos del ${groupToSchedule.name} actualizados con cancha ${assignedCourt}, comenzando a las ${groupStartTimeStr} con duración de ${groupMatchDuration} min.` });
@@ -952,6 +1002,7 @@ function ActiveTournamentPageComponent() {
       setTorneo(null);   
       setGroupScheduleSettings({});
       setGroupTimers({});
+      setActiveTimers([]);
       setCurrentTournamentIndex(-1);
       
       toast({ title: "Torneo Borrado", description: `El torneo "${currentTournamentName}" ha sido eliminado.` });
@@ -1469,6 +1520,84 @@ const handleConfirmPlayoffSchedule = () => {
         </CardFooter>
       </Card>
 
+      {activeTimers.length > 0 && (
+        <Card className="w-full max-w-4xl mb-8 shadow-lg">
+          <CardHeader>
+            <CardTitle className="text-2xl flex items-center">
+              <Clock className="mr-2 h-6 w-6 text-primary" /> Cronómetros Activos
+            </CardTitle>
+            <CardDescription>
+              Controla el tiempo de los grupos programados. Solo un cronómetro puede estar activo a la vez.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {activeTimers.map((timerInfo) => {
+              const timer = groupTimers[timerInfo.groupId];
+              if (!timer) return null;
+
+              return (
+                <div key={timerInfo.groupId} className="border p-4 rounded-lg bg-background flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex-grow">
+                    <p className="font-semibold text-primary">{`Cancha ${timerInfo.court}`}</p>
+                    <p className="text-sm font-medium">{`${timerInfo.categoryName} - ${timerInfo.groupName}`}</p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="text-center">
+                      <div className="font-mono text-3xl font-bold text-primary">
+                        {formatTime(timer.timeRemaining ?? 0)}
+                      </div>
+                      <Progress
+                        value={
+                          timer && timer.initialDuration > 0
+                            ? ((timer.initialDuration - timer.timeRemaining) / timer.initialDuration) * 100
+                            : 0
+                        }
+                        className="h-2 w-24 mt-1"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      {(!timer || !timer.isActive) ? (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => handleTimerControl(timerInfo.groupId, 'start')}
+                          disabled={Object.values(groupTimers).some(t => t.isActive)}
+                          aria-label="Iniciar"
+                        >
+                          <Play className="h-5 w-5" />
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => handleTimerControl(timerInfo.groupId, 'pause')}
+                          aria-label="Pausar"
+                        >
+                          <Pause className="h-5 w-5" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => handleTimerControl(timerInfo.groupId, 'reset')}
+                        aria-label="Reiniciar"
+                      >
+                        <RotateCcw className="h-5 w-5" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+             {Object.values(groupTimers).some(t => t.isActive) && (
+                  <p className="text-xs text-center text-muted-foreground mt-2">
+                    Hay un cronómetro activo. Debes pausarlo para iniciar otro.
+                  </p>
+              )}
+          </CardContent>
+        </Card>
+      )}
+
       <h2 className="text-2xl md:text-3xl font-bold text-primary mb-6 self-start w-full max-w-4xl mx-auto">Categorías y Duplas Originales</h2>
       {torneo.categoriesWithDuplas.length > 0 ? (
         <Accordion type="single" collapsible className="w-full max-w-4xl mb-8" defaultValue={torneo.categoriesWithDuplas.find(c => c.numTotalJugadores > 0)?.id}>
@@ -1569,57 +1698,6 @@ const handleConfirmPlayoffSchedule = () => {
                                     {catFixture.groups.length > 0 ? catFixture.groups.map(group => (
                                         <div key={group.id} className="mb-6 border p-4 rounded-lg">
                                             <h4 className="text-lg font-semibold text-primary mb-3">{group.name}</h4>
-                                            
-                                            <div className="border p-3 rounded-lg bg-background my-4">
-                                                <div className="flex justify-between items-center mb-2">
-                                                    <h5 className="font-semibold text-md">Cronómetro del Grupo</h5>
-                                                    <div className="font-mono text-2xl font-bold text-primary">
-                                                        {formatTime(groupTimers[group.id]?.timeRemaining ?? 0)}
-                                                    </div>
-                                                </div>
-                                                <Progress 
-                                                    value={
-                                                        groupTimers[group.id] && groupTimers[group.id].initialDuration > 0
-                                                        ? ((groupTimers[group.id].initialDuration - groupTimers[group.id].timeRemaining) / groupTimers[group.id].initialDuration) * 100
-                                                        : 0
-                                                    } 
-                                                    className="h-2 mb-3" 
-                                                />
-                                                <div className="flex justify-center gap-3">
-                                                    {(!groupTimers[group.id] || !groupTimers[group.id].isActive) ? (
-                                                        <Button
-                                                            variant="outline"
-                                                            size="icon"
-                                                            onClick={() => handleTimerControl(group.id, 'start')}
-                                                            disabled={Object.values(groupTimers).some(t => t.isActive)}
-                                                        >
-                                                            <Play className="h-5 w-5" />
-                                                            <span className="sr-only">Iniciar</span>
-                                                        </Button>
-                                                    ) : (
-                                                        <Button
-                                                            variant="outline"
-                                                            size="icon"
-                                                            onClick={() => handleTimerControl(group.id, 'pause')}
-                                                        >
-                                                            <Pause className="h-5 w-5" />
-                                                            <span className="sr-only">Pausar</span>
-                                                        </Button>
-                                                    )}
-                                                    <Button
-                                                        variant="outline"
-                                                        size="icon"
-                                                        onClick={() => handleTimerControl(group.id, 'reset')}
-                                                    >
-                                                        <RotateCcw className="h-5 w-5" />
-                                                        <span className="sr-only">Reiniciar</span>
-                                                    </Button>
-                                                </div>
-                                                {Object.values(groupTimers).some(t => t.isActive) && !groupTimers[group.id]?.isActive && (
-                                                    <p className="text-xs text-center text-muted-foreground mt-2">Otro cronómetro está activo.</p>
-                                                )}
-                                            </div>
-
                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4 items-end">
                                                 <div>
                                                     <Label htmlFor={`${group.id}-court`}>Cancha Asignada</Label>
@@ -1894,5 +1972,7 @@ export default function ActiveTournamentPage() {
     </Suspense>
   );
 }
+
+    
 
     
