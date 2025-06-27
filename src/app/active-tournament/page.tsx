@@ -455,12 +455,6 @@ function ActiveTournamentPageComponent() {
 
           switch(action) {
               case 'start':
-                  // Pause any other active timer before starting a new one
-                  Object.keys(newTimers).forEach(id => {
-                      if (id !== groupId) {
-                          newTimers[id].isActive = false;
-                      }
-                  });
                   newTimers[groupId] = { ...timer, isActive: true };
                   break;
               case 'pause':
@@ -1531,7 +1525,7 @@ const handleConfirmPlayoffSchedule = () => {
               <Clock className="mr-2 h-6 w-6 text-primary" /> Cronómetros y Partidos en Juego
             </CardTitle>
             <CardDescription>
-              Controla el tiempo y registra resultados de los grupos programados. Solo un cronómetro puede estar activo a la vez.
+              Controla el tiempo y registra resultados de los grupos programados. Puedes iniciar múltiples cronómetros a la vez.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1571,7 +1565,6 @@ const handleConfirmPlayoffSchedule = () => {
                             variant="outline"
                             size="icon"
                             onClick={() => handleTimerControl(timerInfo.groupId, 'start')}
-                            disabled={Object.values(groupTimers).some(t => t.isActive)}
                             aria-label="Iniciar"
                           >
                             <Play className="h-5 w-5" />
@@ -1638,11 +1631,6 @@ const handleConfirmPlayoffSchedule = () => {
                 </div>
               );
             })}
-             {Object.values(groupTimers).some(t => t.isActive) && (
-                  <p className="text-xs text-center text-muted-foreground mt-2">
-                    Hay un cronómetro activo. Debes pausarlo para iniciar otro.
-                  </p>
-              )}
           </CardContent>
         </Card>
       )}
@@ -2021,6 +2009,8 @@ export default function ActiveTournamentPage() {
     </Suspense>
   );
 }
+
+    
 
     
 
