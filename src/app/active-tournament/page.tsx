@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
+import { Separator } from '@/components/ui/separator';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -156,6 +157,7 @@ interface ActiveTimerInfo {
   categoryId: string;
   categoryName: string;
   court: string | number;
+  matches: Match[];
 }
 
 
@@ -645,7 +647,8 @@ function ActiveTournamentPageComponent() {
                             groupName: group.name,
                             categoryId: catFix.categoryId,
                             categoryName: categoryName,
-                            court: group.groupAssignedCourt
+                            court: group.groupAssignedCourt,
+                            matches: group.matches,
                         });
                     }
                 });
@@ -969,6 +972,7 @@ function ActiveTournamentPageComponent() {
         categoryId: categoryId,
         categoryName: categoryName,
         court: assignedCourt,
+        matches: groupToSchedule.matches,
     };
 
     setActiveTimers(prev => {
@@ -1524,10 +1528,10 @@ const handleConfirmPlayoffSchedule = () => {
         <Card className="w-full max-w-4xl mb-8 shadow-lg">
           <CardHeader>
             <CardTitle className="text-2xl flex items-center">
-              <Clock className="mr-2 h-6 w-6 text-primary" /> Cronómetros Activos
+              <Clock className="mr-2 h-6 w-6 text-primary" /> Cronómetros y Partidos en Juego
             </CardTitle>
             <CardDescription>
-              Controla el tiempo de los grupos programados. Solo un cronómetro puede estar activo a la vez.
+              Controla el tiempo y registra resultados de los grupos programados. Solo un cronómetro puede estar activo a la vez.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1535,57 +1539,102 @@ const handleConfirmPlayoffSchedule = () => {
               const timer = groupTimers[timerInfo.groupId];
               if (!timer) return null;
 
+              const currentMatch = timerInfo.matches.find(m => m.status !== 'completed');
+              const currentMatchIndex = timerInfo.matches.findIndex(m => m.id === currentMatch?.id);
+              const nextMatch = currentMatchIndex > -1 ? timerInfo.matches[currentMatchIndex + 1] : undefined;
+
+
               return (
-                <div key={timerInfo.groupId} className="border p-4 rounded-lg bg-background flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <div className="flex-grow">
-                    <p className="font-semibold text-primary">{`Cancha ${timerInfo.court}`}</p>
-                    <p className="text-sm font-medium">{`${timerInfo.categoryName} - ${timerInfo.groupName}`}</p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-center">
-                      <div className="font-mono text-3xl font-bold text-primary">
-                        {formatTime(timer.timeRemaining ?? 0)}
+                <div key={timerInfo.groupId} className="border p-4 rounded-lg bg-background">
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="flex-grow">
+                      <p className="font-semibold text-primary">{`Cancha ${timerInfo.court}`}</p>
+                      <p className="text-sm font-medium">{`${timerInfo.categoryName} - ${timerInfo.groupName}`}</p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-center">
+                        <div className="font-mono text-3xl font-bold text-primary">
+                          {formatTime(timer.timeRemaining ?? 0)}
+                        </div>
+                        <Progress
+                          value={
+                            timer && timer.initialDuration > 0
+                              ? ((timer.initialDuration - timer.timeRemaining) / timer.initialDuration) * 100
+                              : 0
+                          }
+                          className="h-2 w-24 mt-1"
+                        />
                       </div>
-                      <Progress
-                        value={
-                          timer && timer.initialDuration > 0
-                            ? ((timer.initialDuration - timer.timeRemaining) / timer.initialDuration) * 100
-                            : 0
-                        }
-                        className="h-2 w-24 mt-1"
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      {(!timer || !timer.isActive) ? (
+                      <div className="flex gap-2">
+                        {(!timer || !timer.isActive) ? (
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => handleTimerControl(timerInfo.groupId, 'start')}
+                            disabled={Object.values(groupTimers).some(t => t.isActive)}
+                            aria-label="Iniciar"
+                          >
+                            <Play className="h-5 w-5" />
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => handleTimerControl(timerInfo.groupId, 'pause')}
+                            aria-label="Pausar"
+                          >
+                            <Pause className="h-5 w-5" />
+                          </Button>
+                        )}
                         <Button
                           variant="outline"
                           size="icon"
-                          onClick={() => handleTimerControl(timerInfo.groupId, 'start')}
-                          disabled={Object.values(groupTimers).some(t => t.isActive)}
-                          aria-label="Iniciar"
+                          onClick={() => handleTimerControl(timerInfo.groupId, 'reset')}
+                          aria-label="Reiniciar"
                         >
-                          <Play className="h-5 w-5" />
+                          <RotateCcw className="h-5 w-5" />
                         </Button>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => handleTimerControl(timerInfo.groupId, 'pause')}
-                          aria-label="Pausar"
-                        >
-                          <Pause className="h-5 w-5" />
-                        </Button>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => handleTimerControl(timerInfo.groupId, 'reset')}
-                        aria-label="Reiniciar"
-                      >
-                        <RotateCcw className="h-5 w-5" />
-                      </Button>
+                      </div>
                     </div>
                   </div>
+                  
+                  <Separator className="my-4" />
+
+                  <div className="space-y-3 text-sm">
+                    <div>
+                      <h4 className="font-semibold text-muted-foreground mb-1">Partido Actual</h4>
+                      {currentMatch ? (
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                            <p className="flex-grow">
+                              <span className="font-medium">{currentMatch.dupla1.nombre}</span>
+                              <span className="text-primary mx-2">vs</span>
+                              <span className="font-medium">{currentMatch.dupla2.nombre}</span>
+                            </p>
+                            <Button size="sm" variant="secondary" onClick={() => {
+                                setCurrentEditingMatch({ ...currentMatch, categoryId: timerInfo.categoryId, groupOriginId: timerInfo.groupId });
+                                setIsResultModalOpen(true);
+                              }}
+                              className="h-8"
+                            >
+                              <Edit3 className="mr-2 h-4 w-4" /> Registrar
+                            </Button>
+                          </div>
+                        ) : (
+                          <p className="text-muted-foreground">No hay partidos pendientes en este grupo.</p>
+                      )}
+                    </div>
+                     <div>
+                      <h4 className="font-semibold text-muted-foreground mb-1">Siguiente Partido</h4>
+                       {nextMatch ? (
+                         <p className="text-muted-foreground">
+                           {nextMatch.dupla1.nombre} vs {nextMatch.dupla2.nombre}
+                         </p>
+                       ) : (
+                         <p className="text-muted-foreground">Último partido del grupo.</p>
+                       )}
+                    </div>
+                  </div>
+
                 </div>
               );
             })}
