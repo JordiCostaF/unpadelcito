@@ -169,15 +169,15 @@ interface ActiveTimerInfo {
 
 function compareStandingsNumerically(sA: Standing, sB: Standing): number {
   // 1. Puntos (descendente)
-  if (sA.pts !== sB.pts) return sB.pts - sA.pts;
+  if (sA.pts !== sB.pts) return sB.pts - sB.pts;
   // 2. Partidos Ganados (descendente)
-  if (sA.pg !== sB.pg) return sB.pg - sA.pg;
+  if (sA.pg !== sB.pg) return sB.pg - sB.pg;
   // 3. Diferencia de Puntos (descendente)
   const diffA = sA.pf - sA.pc;
   const diffB = sB.pf - sB.pc;
   if (diffA !== diffB) return diffB - diffA;
   // 4. Puntos a Favor (descendente)
-  if (sA.pf !== sB.pf) return sB.pf - sA.pf;
+  if (sA.pf !== sB.pf) return sB.pf - sB.pf;
   // 5. Puntos en Contra (ascendente, menos es mejor)
   if (sA.pc !== sB.pc) return sA.pc - sB.pc;
   // Si todo es igual, se considera empate numérico
@@ -503,19 +503,28 @@ function ActiveTournamentPageComponent() {
     }
 
     const interval = setInterval(() => {
-      setGroupTimers(prev => {
-        const newTimers = { ...prev };
+      setGroupTimers(prevTimers => {
+        const nextTimers = { ...prevTimers };
         let hasChanged = false;
-        for (const groupId in newTimers) {
-          if (newTimers[groupId].isActive && newTimers[groupId].timeRemaining > 0) {
-            newTimers[groupId].timeRemaining -= 1;
-            if (newTimers[groupId].timeRemaining === 0) {
-              newTimers[groupId].isActive = false; // Stop the timer when it hits zero
-            }
+        
+        Object.keys(prevTimers).forEach(groupId => {
+          const timer = prevTimers[groupId];
+          if (timer.isActive && timer.timeRemaining > 0) {
+            const newTimeRemaining = timer.timeRemaining - 1;
+            
+            // Create a new object for the updated timer, ensuring immutability
+            nextTimers[groupId] = {
+              ...timer,
+              timeRemaining: newTimeRemaining,
+              // Automatically set isActive to false when time runs out
+              isActive: newTimeRemaining > 0, 
+            };
             hasChanged = true;
           }
-        }
-        return hasChanged ? newTimers : prev;
+        });
+        
+        // Only return a new object if something actually changed
+        return hasChanged ? nextTimers : prevTimers;
       });
     }, 1000);
 
@@ -2216,3 +2225,5 @@ export default function ActiveTournamentPage() {
     </Suspense>
   );
 }
+
+    
