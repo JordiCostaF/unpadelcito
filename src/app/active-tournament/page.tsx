@@ -37,6 +37,12 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { useForm, type UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -580,7 +586,7 @@ function ActiveTournamentPageComponent() {
                       if (timerInfo) {
                           toast({
                               title: "Tiempo Añadido",
-                              description: `Se han añadido ${minutesToAdd} minutos para calentamiento en ${timerInfo.groupName}.`
+                              description: `Se han añadido ${minutesToAdd} ${minutesToAdd === 1 ? 'minuto' : 'minutos'} para calentamiento en ${timerInfo.groupName}.`
                           });
                       }
                   }
@@ -1713,15 +1719,34 @@ const handleConfirmPlayoffSchedule = () => {
                         >
                           <RotateCcw className="h-5 w-5" />
                         </Button>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => handleTimerControl(timerInfo.groupId, 'addTime', 5)}
-                          aria-label="Añadir 5 min para calentamiento"
-                          title="Añadir 5 min para calentamiento"
-                        >
-                          <PlusCircle className="h-5 w-5" />
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              aria-label="Añadir tiempo para calentamiento"
+                              title="Añadir tiempo para calentamiento"
+                            >
+                              <PlusCircle className="h-5 w-5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {[1, 2, 3, 4, 5].map((min) => (
+                              <DropdownMenuItem
+                                key={min}
+                                onClick={() =>
+                                  handleTimerControl(
+                                    timerInfo.groupId,
+                                    "addTime",
+                                    min
+                                  )
+                                }
+                              >
+                                Añadir {min} {min === 1 ? 'minuto' : 'minutos'}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
                   </div>
