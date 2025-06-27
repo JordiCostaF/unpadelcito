@@ -318,44 +318,42 @@ export default function TournamentPage() {
   function handleAddDupla(duplaData: Omit<DuplaFormValues, 'id'>) {
     appendDupla({ ...duplaData, id: crypto.randomUUID() });
     duplaForm.reset({
-      player1: { name: "", rut: "" }, 
-      player2: { name: "", rut: "" }, 
-      categoryId: duplaData.categoryId, 
+      player1: { name: "", rut: "" },
+      player2: { name: "", rut: "" },
+      categoryId: duplaData.categoryId,
     });
     toast({
       title: "Dupla Añadida",
       description: `Dupla ${duplaData.player1.name} / ${duplaData.player2.name} ha sido añadida.`,
     });
-    
-    setPlayerPool(prevPool => {
-        const playersToAdd = [duplaData.player1, duplaData.player2];
-        const newPool = [...prevPool];
-        let madeChanges = false;
-
-        playersToAdd.forEach(player => {
-            if (player.name && player.rut) {
-                const isInPool = newPool.some(p => p.rut === player.rut);
-                if (!isInPool) {
-                    newPool.push({ name: player.name, rut: player.rut });
-                    madeChanges = true;
-                }
-            }
-        });
-
-        if (madeChanges) {
-            try {
-                localStorage.setItem('unpadelcitoPlayerPool', JSON.stringify(newPool));
-                toast({
-                    title: "Jugador(es) Guardado(s)",
-                    description: `Los nuevos jugadores se han guardado para futuros torneos.`,
-                });
-            } catch (error) {
-                console.error("Error saving to localStorage:", error);
-            }
-            return newPool;
+  
+    const playersToAdd = [duplaData.player1, duplaData.player2];
+    const newPlayersForPool: { name: string; rut: string }[] = [];
+  
+    playersToAdd.forEach(player => {
+      if (player.name && player.rut) {
+        const isInPool = playerPool.some(p => p.rut === player.rut);
+        // Also check if it's already in the list to be added
+        const isAlreadyInNewList = newPlayersForPool.some(p => p.rut === player.rut);
+        if (!isInPool && !isAlreadyInNewList) {
+          newPlayersForPool.push({ name: player.name, rut: player.rut });
         }
-        return prevPool;
+      }
     });
+  
+    if (newPlayersForPool.length > 0) {
+      const updatedPool = [...playerPool, ...newPlayersForPool];
+      setPlayerPool(updatedPool);
+      try {
+        localStorage.setItem('unpadelcitoPlayerPool', JSON.stringify(updatedPool));
+        toast({
+          title: "Jugador(es) Guardado(s)",
+          description: `Los nuevos jugadores se han guardado para futuros torneos.`,
+        });
+      } catch (error) {
+        console.error("Error saving to localStorage:", error);
+      }
+    }
   }
   
   function handleOpenEditDuplaModal(dupla: DuplaFormValues, index: number) {

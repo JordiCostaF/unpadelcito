@@ -340,23 +340,20 @@ export default function RandomTournamentPage() {
       description: `${playerData.name} ha sido añadido al torneo.`,
     });
 
-    setPlayerPool(prevPool => {
-      const isPlayerInPool = prevPool.some(p => p.rut === playerData.rut);
-      if (!isPlayerInPool) {
-        const newPool = [...prevPool, { name: playerData.name, rut: playerData.rut }];
-        try {
-          localStorage.setItem('unpadelcitoPlayerPool', JSON.stringify(newPool));
-           toast({
-             title: "Jugador Guardado",
-             description: `${playerData.name} se ha guardado en tu lista para futuros torneos.`,
-           });
-        } catch (error) {
-          console.error("Error saving player to localStorage:", error);
-        }
-        return newPool;
+    const isPlayerInPool = playerPool.some(p => p.rut === playerData.rut);
+    if (!isPlayerInPool) {
+      const newPool = [...playerPool, { name: playerData.name, rut: playerData.rut }];
+      setPlayerPool(newPool);
+      try {
+        localStorage.setItem('unpadelcitoPlayerPool', JSON.stringify(newPool));
+         toast({
+           title: "Jugador Guardado",
+           description: `${playerData.name} se ha guardado en tu lista para futuros torneos.`,
+         });
+      } catch (error) {
+        console.error("Error saving player to localStorage:", error);
       }
-      return prevPool;
-    });
+    }
   }
   
   function handleOpenEditPlayerModal(player: PlayerFormValues, index: number) {
