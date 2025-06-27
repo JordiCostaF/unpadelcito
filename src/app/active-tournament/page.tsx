@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from '@/components/ui/separator';
+import { Separator } from "@/components/ui/separator';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -488,6 +488,10 @@ function ActiveTournamentPageComponent() {
   const [categoryToShare, setCategoryToShare] = useState<CategoryFixture | null>(null);
   const [isSharing, setIsSharing] = useState(false);
 
+  // New state for the "Next Match" dialog
+  const [isNextMatchDialogOpen, setIsNextMatchDialogOpen] = useState(false);
+  const [nextMatchInfo, setNextMatchInfo] = useState<{ dupla1: Dupla; dupla2: Dupla; court: string | number } | null>(null);
+
   // --- TIMER LOGIC REFACTOR ---
 
   // 1. Effect to determine if any timer is active
@@ -507,8 +511,8 @@ function ActiveTournamentPageComponent() {
         const nextTimers = { ...prevTimers };
         let hasChanged = false;
         
-        Object.keys(prevTimers).forEach(groupId => {
-          const timer = prevTimers[groupId];
+        Object.keys(nextTimers).forEach(groupId => {
+          const timer = nextTimers[groupId];
           if (timer.isActive && timer.timeRemaining > 0) {
             const newTimeRemaining = timer.timeRemaining - 1;
             
@@ -1186,8 +1190,6 @@ function ActiveTournamentPageComponent() {
 
     const newFixture = JSON.parse(JSON.stringify(fixture)) as FixtureData;
     let matchFound = false;
-    let nextMatchToastInfo: { title: string; description: string } | null = null;
-
 
     const categoryFixture = newFixture[currentEditingMatch.categoryId!];
     if (!categoryFixture) return;
@@ -1259,11 +1261,13 @@ function ActiveTournamentPageComponent() {
                 ));
 
                 const newCurrentMatch = updatedGroup.matches.find(m => m.status !== 'completed');
-                if (newCurrentMatch) {
-                    nextMatchToastInfo = {
-                        title: `¡Siguiente Partido en Cancha ${updatedGroup.groupAssignedCourt}!`,
-                        description: `El partido entre ${newCurrentMatch.dupla1.nombre} y ${newCurrentMatch.dupla2.nombre} puede comenzar.`,
-                    };
+                if (newCurrentMatch && updatedGroup.groupAssignedCourt) {
+                    setNextMatchInfo({
+                        dupla1: newCurrentMatch.dupla1,
+                        dupla2: newCurrentMatch.dupla2,
+                        court: updatedGroup.groupAssignedCourt
+                    });
+                    setIsNextMatchDialogOpen(true);
                 }
             }
         }
@@ -1313,11 +1317,7 @@ function ActiveTournamentPageComponent() {
     if (matchFound) {
         setFixture(newFixture);
         sessionStorage.setItem(`fixture_${torneo.tournamentName}`, JSON.stringify(newFixture));
-        if (nextMatchToastInfo) {
-            toast(nextMatchToastInfo);
-        } else {
-            toast({ title: "Resultado Guardado", description: `El resultado para ${currentEditingMatch.dupla1.nombre} vs ${currentEditingMatch.dupla2.nombre} ha sido actualizado.` });
-        }
+        toast({ title: "Resultado Guardado", description: `El resultado para ${currentEditingMatch.dupla1.nombre} vs ${currentEditingMatch.dupla2.nombre} ha sido actualizado.` });
     } else {
         toast({ title: "Error", description: "No se pudo encontrar el partido para actualizar.", variant: "destructive" });
     }
@@ -2178,6 +2178,35 @@ const handleConfirmPlayoffSchedule = () => {
         onSubmit={handleSaveResult}
         form={resultForm}
       />
+
+      <Dialog open={isNextMatchDialogOpen} onOpenChange={setIsNextMatchDialogOpen}>
+          <DialogContent className="sm:max-w-md text-center">
+              <DialogHeader>
+                  <DialogTitle className="text-2xl md:text-3xl font-bold text-center text-primary">
+                      <Swords className="inline-block h-8 w-8 mr-2" />
+                      ¡Siguiente Partido!
+                  </DialogTitle>
+                  {nextMatchInfo && (
+                      <DialogDescription className="text-lg pt-1">
+                          En Cancha {nextMatchInfo.court}
+                      </DialogDescription>
+                  )}
+              </DialogHeader>
+              {nextMatchInfo && (
+                  <div className="py-6">
+                      <p className="text-xl font-semibold">{nextMatchInfo.dupla1.nombre}</p>
+                      <p className="text-2xl font-bold text-primary my-2">VS</p>
+                      <p className="text-xl font-semibold">{nextMatchInfo.dupla2.nombre}</p>
+                  </div>
+              )}
+              <DialogFooter className="sm:justify-center">
+                  <DialogClose asChild>
+                      <Button type="button" size="lg">Entendido</Button>
+                  </DialogClose>
+              </DialogFooter>
+          </DialogContent>
+      </Dialog>
+
 
       <Dialog open={isPlayoffSchedulerDialogOpen} onOpenChange={setIsPlayoffSchedulerDialogOpen}>
           <DialogContent className="sm:max-w-md">
