@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power, Save, PlayCircle, Edit, ChevronLeft, ChevronRight, AlertTriangle, Share2, Play, Pause, RotateCcw, ArrowUp, ArrowDown } from 'lucide-react';
+import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power, Save, PlayCircle, Edit, ChevronLeft, ChevronRight, AlertTriangle, Share2, Play, Pause, RotateCcw, ArrowUp, ArrowDown, PlusCircle } from 'lucide-react';
 import React, { useEffect, useState, useCallback, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -472,13 +472,11 @@ function ActiveTournamentPageComponent() {
   const [isSharing, setIsSharing] = useState(false);
 
   // Timer Countdown Logic
-  // This effect determines if an interval should be running at all.
   useEffect(() => {
     const hasActiveTimer = Object.values(groupTimers).some(t => t.isActive);
     setIsAnyTimerActive(hasActiveTimer);
   }, [groupTimers]);
 
-  // This effect runs the interval itself. It only runs when `isAnyTimerActive` changes.
   useEffect(() => {
     if (!isAnyTimerActive) {
       return; // Stop if no timers are active.
@@ -491,10 +489,34 @@ function ActiveTournamentPageComponent() {
 
         for (const groupId in newTimers) {
           if (newTimers[groupId].isActive && newTimers[groupId].timeRemaining > 0) {
+            const oldTime = newTimers[groupId].timeRemaining;
             newTimers[groupId].timeRemaining -= 1;
+            const newTime = newTimers[groupId].timeRemaining;
             hasChanged = true;
 
-            if (newTimers[groupId].timeRemaining === 0) {
+            const fiveMinutesInSeconds = 5 * 60;
+            if (oldTime > fiveMinutesInSeconds && newTime <= fiveMinutesInSeconds) {
+              const timerInfo = activeTimers.find(t => t.groupId === groupId);
+              if (timerInfo) {
+                const currentMatch = timerInfo.matches.find(m => m.status !== 'completed');
+                const currentMatchIndex = timerInfo.matches.findIndex(m => m.id === currentMatch?.id);
+                const nextMatch = currentMatchIndex > -1 ? timerInfo.matches[currentMatchIndex + 1] : undefined;
+                
+                if (nextMatch) {
+                    toast({
+                        title: `¡Últimos 5 Minutos en Cancha ${timerInfo.court}!`,
+                        description: `Siguiente partido: ${nextMatch.dupla1.nombre} vs ${nextMatch.dupla2.nombre}. ¡A prepararse!`,
+                    });
+                } else {
+                      toast({
+                        title: `¡Últimos 5 Minutos en Cancha ${timerInfo.court}!`,
+                        description: `El partido en ${timerInfo.groupName} está por terminar.`,
+                    });
+                }
+              }
+            }
+            
+            if (newTime === 0) {
               newTimers[groupId].isActive = false; // Stop the timer
               
               const timerInfo = activeTimers.find(t => t.groupId === groupId);
@@ -509,13 +531,13 @@ function ActiveTournamentPageComponent() {
         }
         return hasChanged ? newTimers : prevTimers;
       });
-    }, 1000); // Correct interval of 1 second
+    }, 1000);
 
     return () => clearInterval(interval);
   }, [isAnyTimerActive, activeTimers, toast]);
 
 
-  const handleTimerControl = (groupId: string, action: 'start' | 'pause' | 'reset') => {
+  const handleTimerControl = (groupId: string, action: 'start' | 'pause' | 'reset' | 'addTime', minutesToAdd?: number) => {
       setGroupTimers(prev => {
           const timer = prev[groupId];
           if (!timer) return prev;
@@ -530,7 +552,38 @@ function ActiveTournamentPageComponent() {
                   newTimers[groupId] = { ...timer, isActive: false };
                   break;
               case 'reset':
-                  newTimers[groupId] = { ...timer, isActive: false, timeRemaining: timer.initialDuration };
+                  {
+                    const timerInfo = activeTimers.find(t => t.groupId === groupId);
+                    const catFixture = timerInfo && fixture ? fixture[timerInfo.categoryId] : null;
+                    const group = catFixture ? catFixture.groups.find(g => g.id === groupId) : null;
+                    const baseDuration = group?.groupMatchDuration || matchDurationGlobal || 60;
+                    
+                    newTimers[groupId] = { 
+                        ...timer, 
+                        isActive: false, 
+                        timeRemaining: baseDuration * 60, 
+                        initialDuration: baseDuration * 60 
+                    };
+                  }
+                  break;
+              case 'addTime':
+                  if (minutesToAdd) {
+                      const addedSeconds = minutesToAdd * 60;
+                      const timerInfo = activeTimers.find(t => t.groupId === groupId);
+                      
+                      newTimers[groupId] = { 
+                          ...timer, 
+                          timeRemaining: timer.timeRemaining + addedSeconds,
+                          initialDuration: timer.initialDuration + addedSeconds,
+                      };
+
+                      if (timerInfo) {
+                          toast({
+                              title: "Tiempo Añadido",
+                              description: `Se han añadido ${minutesToAdd} minutos para calentamiento en ${timerInfo.groupName}.`
+                          });
+                      }
+                  }
                   break;
           }
           return newTimers;
@@ -1659,6 +1712,15 @@ const handleConfirmPlayoffSchedule = () => {
                           aria-label="Reiniciar"
                         >
                           <RotateCcw className="h-5 w-5" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => handleTimerControl(timerInfo.groupId, 'addTime', 5)}
+                          aria-label="Añadir 5 min para calentamiento"
+                          title="Añadir 5 min para calentamiento"
+                        >
+                          <PlusCircle className="h-5 w-5" />
                         </Button>
                       </div>
                     </div>
