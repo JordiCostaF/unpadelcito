@@ -475,6 +475,7 @@ function ActiveTournamentPageComponent() {
   const [activeTimers, setActiveTimers] = useState<ActiveTimerInfo[]>([]);
   const isAnyTimerActive = Object.values(groupTimers).some(t => t.isActive);
   const prevGroupTimers = usePrevious(groupTimers);
+  const [toastWarnings, setToastWarnings] = useState<Map<string, React.ReactNode>>(new Map());
 
 
   const [isPlayoffSchedulerDialogOpen, setIsPlayoffSchedulerDialogOpen] = useState(false);
@@ -490,7 +491,7 @@ function ActiveTournamentPageComponent() {
 
   // New state for the "Next Match" dialog
   const [isNextMatchDialogOpen, setIsNextMatchDialogOpen] = useState(false);
-  const [nextMatchInfo, setNextMatchInfo] = useState<{ dupla1: Dupla; dupla2: Dupla; court: string | number } | null>(null);
+  const [nextMatchInfo, setNextMatchInfo] = useState<{ dupla1: Dupla; dupla2: Dupla; court: string | number; categoryName: string; } | null>(null);
 
   // --- TIMER LOGIC REFACTOR ---
 
@@ -502,29 +503,28 @@ function ActiveTournamentPageComponent() {
 
     const interval = setInterval(() => {
         setGroupTimers(prevTimers => {
-            const nextTimers = { ...prevTimers };
+            const nextTimers: Record<string, GroupTimerState> = {};
             let hasChanged = false;
 
-            Object.keys(nextTimers).forEach(groupId => {
-                const timer = nextTimers[groupId];
+            for (const groupId in prevTimers) {
+                const timer = prevTimers[groupId];
                 if (timer.isActive && timer.timeRemaining > 0) {
-                    // This is an immutable update.
                     nextTimers[groupId] = {
                         ...timer,
                         timeRemaining: timer.timeRemaining - 1,
                     };
                     hasChanged = true;
                 } else if (timer.isActive && timer.timeRemaining <= 0) {
-                    // Also an immutable update to stop the timer.
                     nextTimers[groupId] = {
                         ...timer,
                         timeRemaining: 0,
                         isActive: false,
                     };
                     hasChanged = true;
+                } else {
+                   nextTimers[groupId] = timer;
                 }
-            });
-
+            }
             return hasChanged ? nextTimers : prevTimers;
         });
     }, 1000);
@@ -553,14 +553,17 @@ function ActiveTournamentPageComponent() {
         const nextMatch = currentMatchIndex > -1 ? timerInfo.matches[currentMatchIndex + 1] : undefined;
         
         if (nextMatch) {
-            toast({
-                title: `¡Últimos 5 Minutos en Cancha ${timerInfo.court}!`,
-                description: `Siguiente partido: ${nextMatch.dupla1.nombre} vs ${nextMatch.dupla2.nombre}. ¡A prepararse!`,
-            });
-        } else {
-              toast({
-                title: `¡Últimos 5 Minutos en Cancha ${timerInfo.court}!`,
-                description: `El partido en ${timerInfo.groupName} está por terminar.`,
+            setToastWarnings(prev => {
+                if (prev.has(nextMatch.id)) return prev; // Already warned
+                const newWarning = (
+                    <div className="text-sm">
+                        <p className="font-bold text-primary">{`${timerInfo.categoryName}`}</p>
+                        <p className="font-semibold">{`Cancha ${timerInfo.court}: ${nextMatch.dupla1.nombre} vs ${nextMatch.dupla2.nombre}`}</p>
+                    </div>
+                );
+                const newMap = new Map(prev);
+                newMap.set(nextMatch.id, newWarning);
+                return newMap;
             });
         }
       }
@@ -574,6 +577,33 @@ function ActiveTournamentPageComponent() {
       }
     }
   }, [groupTimers, prevGroupTimers, activeTimers, toast]);
+
+  // 3. Effect for showing/updating the cumulative warning toast.
+  useEffect(() => {
+    if (toastWarnings.size > 0) {
+        const allWarnings = Array.from(toastWarnings.values());
+        const description = (
+            <div className="space-y-3">
+                {allWarnings.map((warning, index) => (
+                    <React.Fragment key={index}>
+                        {warning}
+                        {index < allWarnings.length - 1 && <Separator className="bg-primary/50 my-2" />}
+                    </React.Fragment>
+                ))}
+            </div>
+        );
+        toast({
+            title: "¡A Prepararse! Próximos Partidos:",
+            description,
+            duration: 300000, // 5 minutes
+            onOpenChange: (open) => {
+                if (!open) {
+                    setToastWarnings(new Map());
+                }
+            },
+        });
+    }
+  }, [toastWarnings, toast]);
 
 
   const handleTimerControl = (groupId: string, action: 'start' | 'pause' | 'reset' | 'addTime', minutesToAdd?: number) => {
@@ -1257,13 +1287,26 @@ function ActiveTournamentPageComponent() {
                 ));
 
                 const newCurrentMatch = updatedGroup.matches.find(m => m.status !== 'completed');
-                if (newCurrentMatch && updatedGroup.groupAssignedCourt) {
-                    setNextMatchInfo({
-                        dupla1: newCurrentMatch.dupla1,
-                        dupla2: newCurrentMatch.dupla2,
-                        court: updatedGroup.groupAssignedCourt
+                if (newCurrentMatch) {
+                    // This match is now starting, remove its warning if it exists.
+                    setToastWarnings(prev => {
+                        const newMap = new Map(prev);
+                        if (newMap.has(newCurrentMatch.id)) {
+                            newMap.delete(newCurrentMatch.id);
+                            return newMap;
+                        }
+                        return prev;
                     });
-                    setIsNextMatchDialogOpen(true);
+
+                    if (updatedGroup.groupAssignedCourt) {
+                        setNextMatchInfo({
+                            dupla1: newCurrentMatch.dupla1,
+                            dupla2: newCurrentMatch.dupla2,
+                            court: updatedGroup.groupAssignedCourt,
+                            categoryName: categoryFixture.categoryName,
+                        });
+                        setIsNextMatchDialogOpen(true);
+                    }
                 }
             }
         }
@@ -2190,7 +2233,8 @@ const handleConfirmPlayoffSchedule = () => {
               </DialogHeader>
               {nextMatchInfo && (
                   <div className="py-6">
-                      <p className="text-xl font-semibold">{nextMatchInfo.dupla1.nombre}</p>
+                      <p className="text-lg font-medium text-muted-foreground">{nextMatchInfo.categoryName}</p>
+                      <p className="text-xl font-semibold mt-2">{nextMatchInfo.dupla1.nombre}</p>
                       <p className="text-2xl font-bold text-primary my-2">VS</p>
                       <p className="text-xl font-semibold">{nextMatchInfo.dupla2.nombre}</p>
                   </div>
