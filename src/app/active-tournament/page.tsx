@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power, Save, PlayCircle, Edit, ChevronLeft, ChevronRight, AlertTriangle, Share2 } from 'lucide-react';
+import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power, Save, PlayCircle, Edit, ChevronLeft, ChevronRight, AlertTriangle, Share2, Play, Pause, RotateCcw } from 'lucide-react';
 import React, { useEffect, useState, useCallback, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Progress } from "@/components/ui/progress";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -142,6 +143,13 @@ interface GroupScheduleState {
     duration: string;
   };
 }
+
+interface GroupTimerState {
+  isActive: boolean;
+  timeRemaining: number; // in seconds
+  initialDuration: number; // in seconds
+}
+
 
 function compareStandingsNumerically(sA: Standing, sB: Standing): number {
   // 1. Puntos (descendente)
@@ -365,6 +373,8 @@ function ActiveTournamentPageComponent() {
   const [isResultModalOpen, setIsResultModalOpen] = useState(false);
   const [currentEditingMatch, setCurrentEditingMatch] = useState<(Match | PlayoffMatch | null) & { categoryId?: string; groupOriginId?: string }>(null);
   const [groupScheduleSettings, setGroupScheduleSettings] = useState<GroupScheduleState>({});
+  const [groupTimers, setGroupTimers] = useState<Record<string, GroupTimerState>>({});
+
 
   const [isPlayoffSchedulerDialogOpen, setIsPlayoffSchedulerDialogOpen] = useState(false);
   const [categoryForPlayoffScheduling, setCategoryForPlayoffScheduling] = useState<CategoriaConDuplas | null>(null);
@@ -376,6 +386,92 @@ function ActiveTournamentPageComponent() {
   const shareableRef = useRef<HTMLDivElement>(null);
   const [categoryToShare, setCategoryToShare] = useState<CategoryFixture | null>(null);
   const [isSharing, setIsSharing] = useState(false);
+
+  // Timer Countdown Logic
+  useEffect(() => {
+    const activeTimerExists = Object.values(groupTimers).some(t => t.isActive);
+    if (!activeTimerExists) {
+        return; // No active timers, no need for an interval.
+    }
+
+    const interval = setInterval(() => {
+        setGroupTimers(prev => {
+            const newTimers = { ...prev };
+            let timerHasEnded = false;
+            let endedGroupName = '';
+
+            for (const groupId in newTimers) {
+                if (newTimers[groupId].isActive && newTimers[groupId].timeRemaining > 0) {
+                    newTimers[groupId].timeRemaining -= 1;
+                } else if (newTimers[groupId].isActive && newTimers[groupId].timeRemaining <= 0) {
+                    newTimers[groupId].isActive = false;
+                    newTimers[groupId].timeRemaining = 0;
+                    timerHasEnded = true;
+
+                    // Find group name for toast message
+                    if (fixture) {
+                        for (const catFixture of Object.values(fixture)) {
+                            const group = catFixture.groups.find(g => g.id === groupId);
+                            if (group) {
+                                endedGroupName = group.name;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (timerHasEnded) {
+                toast({
+                    title: "¡Tiempo Terminado!",
+                    description: `El tiempo para ${endedGroupName || 'un grupo'} ha finalizado.`,
+                });
+            }
+
+            return newTimers;
+        });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [groupTimers, fixture, toast]);
+
+
+  const handleTimerControl = (groupId: string, action: 'start' | 'pause' | 'reset') => {
+      setGroupTimers(prev => {
+          const timer = prev[groupId];
+          if (!timer) return prev;
+
+          const newTimers = { ...prev };
+
+          switch(action) {
+              case 'start':
+                  // Pause any other active timer before starting a new one
+                  Object.keys(newTimers).forEach(id => {
+                      if (id !== groupId) {
+                          newTimers[id].isActive = false;
+                      }
+                  });
+                  newTimers[groupId] = { ...timer, isActive: true };
+                  break;
+              case 'pause':
+                  newTimers[groupId] = { ...timer, isActive: false };
+                  break;
+              case 'reset':
+                  newTimers[groupId] = { ...timer, isActive: false, timeRemaining: timer.initialDuration };
+                  break;
+          }
+          return newTimers;
+      });
+  };
+
+  const formatTime = (totalSeconds: number): string => {
+    if (isNaN(totalSeconds) || totalSeconds < 0) return "00:00";
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+
 
   useEffect(() => {
     if (categoryToShare && shareableRef.current && !isSharing) {
@@ -389,6 +485,7 @@ function ActiveTournamentPageComponent() {
         html2canvas(shareableRef.current!, { 
           scale: 2,
           useCORS: true,
+           backgroundColor: '#F5F5DC' 
         }).then((canvas) => {
           const image = canvas.toDataURL("image/png");
           const link = document.createElement("a");
@@ -513,26 +610,36 @@ function ActiveTournamentPageComponent() {
           const parsedFixture = JSON.parse(storedFixture);
           setFixture(parsedFixture);
           const initialGroupSettings: GroupScheduleState = {};
+          const initialTimers: Record<string, GroupTimerState> = {};
           if (parsedFixture) {
             Object.values(parsedFixture).forEach((catFix: any) => {
                 (catFix.groups || []).forEach((group: Group) => {
+                    const duration = group.groupMatchDuration || parsedTorneo.matchDuration || 60;
                     initialGroupSettings[group.id] = {
                         court: group.groupAssignedCourt?.toString() || '1',
                         startTime: group.groupStartTime || '09:00',
-                        duration: group.groupMatchDuration?.toString() || (parsedTorneo.matchDuration?.toString() || '60'),
+                        duration: duration.toString(),
+                    };
+                    initialTimers[group.id] = {
+                        isActive: false,
+                        timeRemaining: duration * 60,
+                        initialDuration: duration * 60,
                     };
                 });
             });
           }
           setGroupScheduleSettings(initialGroupSettings);
+          setGroupTimers(initialTimers);
         } else {
           setFixture(null);
           setGroupScheduleSettings({});
+          setGroupTimers({});
         }
       } else {
         setTorneo(null);
         setFixture(null);
         setGroupScheduleSettings({});
+        setGroupTimers({});
         if (nameToLoad) {
             toast({ title: "Torneo no encontrado", description: `No se encontró el torneo "${nameToLoad}".`, variant: "destructive" });
         }
@@ -543,6 +650,7 @@ function ActiveTournamentPageComponent() {
       setTorneo(null);
       setFixture(null);
       setGroupScheduleSettings({});
+      setGroupTimers({});
     }
     setIsLoading(false);
   }, [toast]);
@@ -623,7 +731,9 @@ function ActiveTournamentPageComponent() {
 
     const newFixture: FixtureData = {};
     const initialGroupSettings: GroupScheduleState = {};
-    const defaultDuration = matchDurationGlobal?.toString() || '60';
+    const newTimersState: Record<string, GroupTimerState> = {};
+    const defaultDuration = matchDurationGlobal || 60;
+    const defaultDurationStr = defaultDuration.toString();
 
     for (const category of torneo.categoriesWithDuplas) {
         const categoryName = category ? `${category.type} - ${category.level}` : "Categoría Desconocida";
@@ -654,7 +764,8 @@ function ActiveTournamentPageComponent() {
                 groupStartTime: undefined,
                 groupMatchDuration: undefined,
             });
-            initialGroupSettings[groupId] = { court: '1', startTime: '09:00', duration: defaultDuration };
+            initialGroupSettings[groupId] = { court: '1', startTime: '09:00', duration: defaultDurationStr };
+            newTimersState[groupId] = { isActive: false, timeRemaining: defaultDuration * 60, initialDuration: defaultDuration * 60 };
         } else {
             let duplasToAssign = numCategoryDuplas;
             const idealGroupSize = Math.min(5, Math.max(3, Math.ceil(numCategoryDuplas / Math.ceil(numCategoryDuplas/5))));
@@ -682,7 +793,8 @@ function ActiveTournamentPageComponent() {
                             matches: generateAndOrderGroupMatches(groupDuplas, groupId),
                             groupAssignedCourt: undefined, groupStartTime: undefined, groupMatchDuration: undefined,
                         });
-                        initialGroupSettings[groupId] = { court: '1', startTime: '09:00', duration: defaultDuration };
+                        initialGroupSettings[groupId] = { court: '1', startTime: '09:00', duration: defaultDurationStr };
+                        newTimersState[groupId] = { isActive: false, timeRemaining: defaultDuration * 60, initialDuration: defaultDuration * 60 };
                         duplasToAssign -= groupDuplas.length;
                     }
                 } else {
@@ -695,7 +807,8 @@ function ActiveTournamentPageComponent() {
                         matches: generateAndOrderGroupMatches(groupDuplas, groupId),
                         groupAssignedCourt: undefined, groupStartTime: undefined, groupMatchDuration: undefined,
                     });
-                    initialGroupSettings[groupId] = { court: '1', startTime: '09:00', duration: defaultDuration };
+                    initialGroupSettings[groupId] = { court: '1', startTime: '09:00', duration: defaultDurationStr };
+                    newTimersState[groupId] = { isActive: false, timeRemaining: defaultDuration * 60, initialDuration: defaultDuration * 60 };
                     duplasToAssign -= groupDuplas.length;
                 }
                 groupLetter = String.fromCharCode(groupLetter.charCodeAt(0) + 1);
@@ -735,6 +848,7 @@ function ActiveTournamentPageComponent() {
 
     setFixture(newFixture);
     setGroupScheduleSettings(initialGroupSettings);
+    setGroupTimers(newTimersState);
     if (torneo) {
       sessionStorage.setItem(`fixture_${torneo.tournamentName}`, JSON.stringify(newFixture));
     }
@@ -768,6 +882,16 @@ function ActiveTournamentPageComponent() {
     groupToSchedule.groupAssignedCourt = assignedCourt;
     groupToSchedule.groupStartTime = groupStartTimeStr;
     groupToSchedule.groupMatchDuration = groupMatchDuration;
+    
+    // Update timer state for this group
+    setGroupTimers(prev => ({
+      ...prev,
+      [groupId]: {
+        isActive: false,
+        timeRemaining: groupMatchDuration * 60,
+        initialDuration: groupMatchDuration * 60
+      }
+    }));
     
     groupToSchedule.matches.forEach(match => {
         match.time = undefined;
@@ -827,6 +951,7 @@ function ActiveTournamentPageComponent() {
       setFixture(null); 
       setTorneo(null);   
       setGroupScheduleSettings({});
+      setGroupTimers({});
       setCurrentTournamentIndex(-1);
       
       toast({ title: "Torneo Borrado", description: `El torneo "${currentTournamentName}" ha sido eliminado.` });
@@ -1444,6 +1569,57 @@ const handleConfirmPlayoffSchedule = () => {
                                     {catFixture.groups.length > 0 ? catFixture.groups.map(group => (
                                         <div key={group.id} className="mb-6 border p-4 rounded-lg">
                                             <h4 className="text-lg font-semibold text-primary mb-3">{group.name}</h4>
+                                            
+                                            <div className="border p-3 rounded-lg bg-background my-4">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <h5 className="font-semibold text-md">Cronómetro del Grupo</h5>
+                                                    <div className="font-mono text-2xl font-bold text-primary">
+                                                        {formatTime(groupTimers[group.id]?.timeRemaining ?? 0)}
+                                                    </div>
+                                                </div>
+                                                <Progress 
+                                                    value={
+                                                        groupTimers[group.id] && groupTimers[group.id].initialDuration > 0
+                                                        ? ((groupTimers[group.id].initialDuration - groupTimers[group.id].timeRemaining) / groupTimers[group.id].initialDuration) * 100
+                                                        : 0
+                                                    } 
+                                                    className="h-2 mb-3" 
+                                                />
+                                                <div className="flex justify-center gap-3">
+                                                    {(!groupTimers[group.id] || !groupTimers[group.id].isActive) ? (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="icon"
+                                                            onClick={() => handleTimerControl(group.id, 'start')}
+                                                            disabled={Object.values(groupTimers).some(t => t.isActive)}
+                                                        >
+                                                            <Play className="h-5 w-5" />
+                                                            <span className="sr-only">Iniciar</span>
+                                                        </Button>
+                                                    ) : (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="icon"
+                                                            onClick={() => handleTimerControl(group.id, 'pause')}
+                                                        >
+                                                            <Pause className="h-5 w-5" />
+                                                            <span className="sr-only">Pausar</span>
+                                                        </Button>
+                                                    )}
+                                                    <Button
+                                                        variant="outline"
+                                                        size="icon"
+                                                        onClick={() => handleTimerControl(group.id, 'reset')}
+                                                    >
+                                                        <RotateCcw className="h-5 w-5" />
+                                                        <span className="sr-only">Reiniciar</span>
+                                                    </Button>
+                                                </div>
+                                                {Object.values(groupTimers).some(t => t.isActive) && !groupTimers[group.id]?.isActive && (
+                                                    <p className="text-xs text-center text-muted-foreground mt-2">Otro cronómetro está activo.</p>
+                                                )}
+                                            </div>
+
                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4 items-end">
                                                 <div>
                                                     <Label htmlFor={`${group.id}-court`}>Cancha Asignada</Label>
@@ -1718,3 +1894,5 @@ export default function ActiveTournamentPage() {
     </Suspense>
   );
 }
+
+    
