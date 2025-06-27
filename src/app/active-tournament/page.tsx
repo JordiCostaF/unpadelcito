@@ -169,15 +169,15 @@ interface ActiveTimerInfo {
 
 function compareStandingsNumerically(sA: Standing, sB: Standing): number {
   // 1. Puntos (descendente)
-  if (sA.pts !== sB.pts) return sB.pts - sB.pts;
+  if (sA.pts !== sB.pts) return sB.pts - sA.pts;
   // 2. Partidos Ganados (descendente)
-  if (sA.pg !== sB.pg) return sB.pg - sB.pg;
+  if (sA.pg !== sB.pg) return sB.pg - sA.pg;
   // 3. Diferencia de Puntos (descendente)
   const diffA = sA.pf - sA.pc;
   const diffB = sB.pf - sB.pc;
   if (diffA !== diffB) return diffB - diffA;
   // 4. Puntos a Favor (descendente)
-  if (sA.pf !== sB.pf) return sB.pf - sB.pf;
+  if (sA.pf !== sB.pf) return sB.pf - sA.pf;
   // 5. Puntos en Contra (ascendente, menos es mejor)
   if (sA.pc !== sB.pc) return sA.pc - sB.pc;
   // Si todo es igual, se considera empate numérico
@@ -1184,8 +1184,10 @@ function ActiveTournamentPageComponent() {
     const score1 = parseInt(data.score1, 10);
     const score2 = parseInt(data.score2, 10);
 
-    const newFixture = JSON.parse(JSON.stringify(fixture)) as FixtureData; 
+    const newFixture = JSON.parse(JSON.stringify(fixture)) as FixtureData;
     let matchFound = false;
+    let nextMatchToastInfo: { title: string; description: string } | null = null;
+
 
     const categoryFixture = newFixture[currentEditingMatch.categoryId!];
     if (!categoryFixture) return;
@@ -1248,6 +1250,21 @@ function ActiveTournamentPageComponent() {
                         standing1.pp += 1;
                     }
                 }
+                
+                const updatedGroup = group;
+                setActiveTimers(prev => prev.map(timerInfo =>
+                    timerInfo.groupId === updatedGroup.id
+                        ? { ...timerInfo, matches: [...updatedGroup.matches] }
+                        : timerInfo
+                ));
+
+                const newCurrentMatch = updatedGroup.matches.find(m => m.status !== 'completed');
+                if (newCurrentMatch) {
+                    nextMatchToastInfo = {
+                        title: `¡Siguiente Partido en Cancha ${updatedGroup.groupAssignedCourt}!`,
+                        description: `El partido entre ${newCurrentMatch.dupla1.nombre} y ${newCurrentMatch.dupla2.nombre} puede comenzar.`,
+                    };
+                }
             }
         }
     } 
@@ -1296,7 +1313,11 @@ function ActiveTournamentPageComponent() {
     if (matchFound) {
         setFixture(newFixture);
         sessionStorage.setItem(`fixture_${torneo.tournamentName}`, JSON.stringify(newFixture));
-        toast({ title: "Resultado Guardado", description: `El resultado para ${currentEditingMatch.dupla1.nombre} vs ${currentEditingMatch.dupla2.nombre} ha sido actualizado.` });
+        if (nextMatchToastInfo) {
+            toast(nextMatchToastInfo);
+        } else {
+            toast({ title: "Resultado Guardado", description: `El resultado para ${currentEditingMatch.dupla1.nombre} vs ${currentEditingMatch.dupla2.nombre} ha sido actualizado.` });
+        }
     } else {
         toast({ title: "Error", description: "No se pudo encontrar el partido para actualizar.", variant: "destructive" });
     }
