@@ -439,6 +439,16 @@ const recalculateMatchTimesForGroup = (group: Group, tournamentDate: string, sta
 };
 
 
+// Custom hook to get the previous value of a state or prop
+function usePrevious<T>(value: T) {
+  const ref = useRef<T>();
+  useEffect(() => {
+    ref.current = value;
+  }, [value]);
+  return ref.current;
+}
+
+
 function ActiveTournamentPageComponent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -464,6 +474,7 @@ function ActiveTournamentPageComponent() {
   const [groupTimers, setGroupTimers] = useState<Record<string, GroupTimerState>>({});
   const [activeTimers, setActiveTimers] = useState<ActiveTimerInfo[]>([]);
   const [isAnyTimerActive, setIsAnyTimerActive] = useState(false);
+  const prevGroupTimers = usePrevious(groupTimers);
 
 
   const [isPlayoffSchedulerDialogOpen, setIsPlayoffSchedulerDialogOpen] = useState(false);
@@ -477,70 +488,82 @@ function ActiveTournamentPageComponent() {
   const [categoryToShare, setCategoryToShare] = useState<CategoryFixture | null>(null);
   const [isSharing, setIsSharing] = useState(false);
 
-  // Timer Countdown Logic
+  // --- TIMER LOGIC REFACTOR ---
+
+  // 1. Effect to determine if any timer is active
   useEffect(() => {
     const hasActiveTimer = Object.values(groupTimers).some(t => t.isActive);
     setIsAnyTimerActive(hasActiveTimer);
   }, [groupTimers]);
 
+  // 2. Effect for TICKING the timers down. This is stable and only depends on isAnyTimerActive.
   useEffect(() => {
     if (!isAnyTimerActive) {
-      return; // Stop if no timers are active.
+      return; // No active timers, do nothing.
     }
 
     const interval = setInterval(() => {
-      setGroupTimers(prevTimers => {
-        const newTimers = { ...prevTimers };
+      setGroupTimers(prev => {
+        const newTimers = { ...prev };
         let hasChanged = false;
-
         for (const groupId in newTimers) {
           if (newTimers[groupId].isActive && newTimers[groupId].timeRemaining > 0) {
-            const oldTime = newTimers[groupId].timeRemaining;
             newTimers[groupId].timeRemaining -= 1;
-            const newTime = newTimers[groupId].timeRemaining;
+            if (newTimers[groupId].timeRemaining === 0) {
+              newTimers[groupId].isActive = false; // Stop the timer when it hits zero
+            }
             hasChanged = true;
-
-            const fiveMinutesInSeconds = 5 * 60;
-            if (oldTime > fiveMinutesInSeconds && newTime <= fiveMinutesInSeconds) {
-              const timerInfo = activeTimers.find(t => t.groupId === groupId);
-              if (timerInfo) {
-                const currentMatch = timerInfo.matches.find(m => m.status !== 'completed');
-                const currentMatchIndex = timerInfo.matches.findIndex(m => m.id === currentMatch?.id);
-                const nextMatch = currentMatchIndex > -1 ? timerInfo.matches[currentMatchIndex + 1] : undefined;
-                
-                if (nextMatch) {
-                    toast({
-                        title: `¡Últimos 5 Minutos en Cancha ${timerInfo.court}!`,
-                        description: `Siguiente partido: ${nextMatch.dupla1.nombre} vs ${nextMatch.dupla2.nombre}. ¡A prepararse!`,
-                    });
-                } else {
-                      toast({
-                        title: `¡Últimos 5 Minutos en Cancha ${timerInfo.court}!`,
-                        description: `El partido en ${timerInfo.groupName} está por terminar.`,
-                    });
-                }
-              }
-            }
-            
-            if (newTime === 0) {
-              newTimers[groupId].isActive = false; // Stop the timer
-              
-              const timerInfo = activeTimers.find(t => t.groupId === groupId);
-              if (timerInfo) {
-                toast({
-                  title: "¡Tiempo Terminado!",
-                  description: `El tiempo para ${timerInfo.groupName} (${timerInfo.categoryName}) ha finalizado.`,
-                });
-              }
-            }
           }
         }
-        return hasChanged ? newTimers : prevTimers;
+        return hasChanged ? newTimers : prev;
       });
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isAnyTimerActive, activeTimers, toast]);
+  }, [isAnyTimerActive]);
+
+  // 3. Effect for NOTIFYING based on timer changes. This runs when timers state changes.
+  useEffect(() => {
+    if (!prevGroupTimers || !groupTimers) return;
+
+    for (const groupId in groupTimers) {
+      const currentTimer = groupTimers[groupId];
+      const prevTimer = prevGroupTimers[groupId];
+
+      if (!currentTimer || !prevTimer) continue;
+      
+      const timerInfo = activeTimers.find(t => t.groupId === groupId);
+      if (!timerInfo) continue;
+
+      // Check for 5-minute warning
+      const fiveMinutesInSeconds = 5 * 60;
+      if (prevTimer.timeRemaining > fiveMinutesInSeconds && currentTimer.timeRemaining <= fiveMinutesInSeconds) {
+        const currentMatch = timerInfo.matches.find(m => m.status !== 'completed');
+        const currentMatchIndex = timerInfo.matches.findIndex(m => m.id === currentMatch?.id);
+        const nextMatch = currentMatchIndex > -1 ? timerInfo.matches[currentMatchIndex + 1] : undefined;
+        
+        if (nextMatch) {
+            toast({
+                title: `¡Últimos 5 Minutos en Cancha ${timerInfo.court}!`,
+                description: `Siguiente partido: ${nextMatch.dupla1.nombre} vs ${nextMatch.dupla2.nombre}. ¡A prepararse!`,
+            });
+        } else {
+              toast({
+                title: `¡Últimos 5 Minutos en Cancha ${timerInfo.court}!`,
+                description: `El partido en ${timerInfo.groupName} está por terminar.`,
+            });
+        }
+      }
+
+      // Check for timer finished (transition from active to inactive at zero)
+      if (prevTimer.isActive && !currentTimer.isActive && currentTimer.timeRemaining === 0) {
+        toast({
+          title: "¡Tiempo Terminado!",
+          description: `El tiempo para ${timerInfo.groupName} (${timerInfo.categoryName}) ha finalizado.`,
+        });
+      }
+    }
+  }, [groupTimers, prevGroupTimers, activeTimers, toast]);
 
 
   const handleTimerControl = (groupId: string, action: 'start' | 'pause' | 'reset' | 'addTime', minutesToAdd?: number) => {
