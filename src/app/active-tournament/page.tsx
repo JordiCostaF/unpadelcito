@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power, Save, PlayCircle, Edit, ChevronLeft, ChevronRight, AlertTriangle, Share2, Play, Pause, RotateCcw } from 'lucide-react';
+import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power, Save, PlayCircle, Edit, ChevronLeft, ChevronRight, AlertTriangle, Share2, Play, Pause, RotateCcw, ArrowUp, ArrowDown } from 'lucide-react';
 import React, { useEffect, useState, useCallback, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -362,6 +362,76 @@ function generateAndOrderGroupMatches(duplasInGroup: Dupla[], groupId: string): 
     round: undefined,
   }));
 }
+
+const recalculateMatchTimesForGroup = (group: Group, tournamentDate: string, startTime: string, matchDuration: number): Group => {
+  if (!group || !startTime || !matchDuration || !isValid(new Date(tournamentDate))) {
+    return group;
+  }
+  
+  const updatedGroup = JSON.parse(JSON.stringify(group));
+  const assignedCourt = updatedGroup.groupAssignedCourt;
+
+  const tournamentBaseDate = new Date(tournamentDate);
+  const [startHours, startMinutes] = startTime.split(':').map(Number);
+  
+  if (isNaN(startHours) || isNaN(startMinutes)) return group;
+
+  let currentMatchDateTime = setMinutes(setHours(tournamentBaseDate, startHours), startMinutes);
+  
+  const lastPlayedByDuplaInGroup = new Map<string, Date>();
+
+  for (let i = 0; i < updatedGroup.matches.length; i++) {
+    const match = updatedGroup.matches[i];
+    
+    // Saltarse los partidos completados, su hora es fija.
+    // Pero el siguiente partido debe considerar cuándo terminó éste.
+    if (match.status === 'completed' && match.time) {
+        const completedMatchTime = parse(match.time, "HH:mm", tournamentBaseDate);
+        if (isValid(completedMatchTime)) {
+            const completedMatchEndTime = addMinutes(completedMatchTime, matchDuration);
+            // El siguiente partido no puede empezar antes de que este termine.
+            if (completedMatchEndTime > currentMatchDateTime) {
+                currentMatchDateTime = completedMatchEndTime;
+            }
+            // Actualizar la última vez que jugaron estas duplas para el cálculo del descanso
+            lastPlayedByDuplaInGroup.set(match.dupla1.id, new Date(completedMatchTime.getTime()));
+            lastPlayedByDuplaInGroup.set(match.dupla2.id, new Date(completedMatchTime.getTime()));
+        }
+        continue;
+    }
+
+
+    let duplasAreRested = false;
+    let attemptTime = new Date(currentMatchDateTime.getTime()); 
+
+    while(!duplasAreRested) {
+        const d1LastPlayStartTime = lastPlayedByDuplaInGroup.get(match.dupla1.id);
+        const d2LastPlayStartTime = lastPlayedByDuplaInGroup.get(match.dupla2.id);
+        
+        const d1CanPlay = !d1LastPlayStartTime || (attemptTime.getTime() >= addMinutes(d1LastPlayStartTime, matchDuration).getTime());
+        const d2CanPlay = !d2LastPlayStartTime || (attemptTime.getTime() >= addMinutes(d2LastPlayStartTime, matchDuration).getTime());
+        
+        if (d1CanPlay && d2CanPlay) {
+            duplasAreRested = true;
+            currentMatchDateTime = new Date(attemptTime.getTime()); 
+        } else {
+            // Avanzar en bloques de la duración del partido si no están listos
+            attemptTime = addMinutes(attemptTime, matchDuration); 
+        }
+    }
+    
+    match.time = format(currentMatchDateTime, "HH:mm");
+    match.court = assignedCourt;
+
+    lastPlayedByDuplaInGroup.set(match.dupla1.id, new Date(currentMatchDateTime.getTime()));
+    lastPlayedByDuplaInGroup.set(match.dupla2.id, new Date(currentMatchDateTime.getTime()));
+    
+    currentMatchDateTime = addMinutes(currentMatchDateTime, matchDuration);
+  }
+
+  return updatedGroup;
+};
+
 
 function ActiveTournamentPageComponent() {
   const router = useRouter();
@@ -903,7 +973,7 @@ function ActiveTournamentPageComponent() {
     const groupIndex = categoryFixture.groups.findIndex(g => g.id === groupId);
     if (groupIndex === -1) return;
 
-    const groupToSchedule = categoryFixture.groups[groupIndex];
+    let groupToSchedule = categoryFixture.groups[groupIndex];
     groupToSchedule.groupAssignedCourt = assignedCourt;
     groupToSchedule.groupStartTime = groupStartTimeStr;
     groupToSchedule.groupMatchDuration = groupMatchDuration;
@@ -918,45 +988,9 @@ function ActiveTournamentPageComponent() {
       }
     }));
     
-    groupToSchedule.matches.forEach(match => {
-        match.time = undefined;
-        match.court = undefined;
-    });
-    
-    const tournamentBaseDate = torneo.date ? new Date(torneo.date) : new Date(); 
-    let [startHours, startMinutes] = groupStartTimeStr.split(':').map(Number);
-    let currentMatchDateTime = setMinutes(setHours(tournamentBaseDate, startHours), startMinutes);
+    groupToSchedule = recalculateMatchTimesForGroup(groupToSchedule, torneo.date, groupStartTimeStr, groupMatchDuration);
 
-    const lastPlayedByDuplaInGroup = new Map<string, Date>(); 
-
-    for (let i = 0; i < groupToSchedule.matches.length; i++) {
-        const match = groupToSchedule.matches[i];
-        let duplasAreRested = false;
-        let attemptTime = new Date(currentMatchDateTime.getTime()); 
-
-        while(!duplasAreRested) {
-            const d1LastPlayStartTime = lastPlayedByDuplaInGroup.get(match.dupla1.id);
-            const d2LastPlayStartTime = lastPlayedByDuplaInGroup.get(match.dupla2.id);
-            
-            const d1CanPlay = !d1LastPlayStartTime || (attemptTime.getTime() >= addMinutes(d1LastPlayStartTime, groupMatchDuration).getTime());
-            const d2CanPlay = !d2LastPlayStartTime || (attemptTime.getTime() >= addMinutes(d2LastPlayStartTime, groupMatchDuration).getTime());
-            
-            if (d1CanPlay && d2CanPlay) {
-                duplasAreRested = true;
-                currentMatchDateTime = new Date(attemptTime.getTime()); 
-            } else {
-                attemptTime = addMinutes(attemptTime, groupMatchDuration); 
-            }
-        }
-        
-        match.time = format(currentMatchDateTime, "HH:mm");
-        match.court = assignedCourt;
-
-        lastPlayedByDuplaInGroup.set(match.dupla1.id, new Date(currentMatchDateTime.getTime()));
-        lastPlayedByDuplaInGroup.set(match.dupla2.id, new Date(currentMatchDateTime.getTime()));
-        
-        currentMatchDateTime = addMinutes(currentMatchDateTime, groupMatchDuration);
-    }
+    categoryFixture.groups[groupIndex] = groupToSchedule;
 
     const categoryName = categoryFixture ? categoryFixture.categoryName : 'Categoría';
     const newTimerInfo: ActiveTimerInfo = {
@@ -983,6 +1017,46 @@ function ActiveTournamentPageComponent() {
     setFixture(newFixture);
     sessionStorage.setItem(`fixture_${torneo.tournamentName}`, JSON.stringify(newFixture));
     toast({ title: "Grupo Programado", description: `Partidos del ${groupToSchedule.name} actualizados con cancha ${assignedCourt}, comenzando a las ${groupStartTimeStr} con duración de ${groupMatchDuration} min.` });
+  };
+  
+  const handleMoveMatch = (categoryId: string, groupId: string, matchIndex: number, direction: 'up' | 'down') => {
+      if (!fixture || !torneo) return;
+
+      const newFixture = JSON.parse(JSON.stringify(fixture)) as FixtureData;
+      const categoryFixture = newFixture[categoryId];
+      if (!categoryFixture) return;
+
+      const groupIndex = categoryFixture.groups.findIndex(g => g.id === groupId);
+      if (groupIndex === -1) return;
+
+      const group = categoryFixture.groups[groupIndex];
+      
+      if (group.matches[matchIndex].status === 'completed') {
+        toast({ title: "Acción no permitida", description: "No se pueden reordenar partidos completados.", variant: "destructive" });
+        return;
+      }
+
+      const newMatchIndex = direction === 'up' ? matchIndex - 1 : matchIndex + 1;
+      if (newMatchIndex < 0 || newMatchIndex >= group.matches.length) return;
+
+      const newMatches = [...group.matches];
+      const [movedMatch] = newMatches.splice(matchIndex, 1);
+      newMatches.splice(newMatchIndex, 0, movedMatch);
+      
+      group.matches = newMatches;
+
+      const updatedGroup = recalculateMatchTimesForGroup(
+        group,
+        torneo.date,
+        group.groupStartTime!,
+        group.groupMatchDuration!
+      );
+      
+      categoryFixture.groups[groupIndex] = updatedGroup;
+      
+      setFixture(newFixture);
+      sessionStorage.setItem(`fixture_${torneo.tournamentName}`, JSON.stringify(newFixture));
+      toast({ title: "Partidos Reordenados", description: `Se actualizó el horario para el ${group.name}.` });
   };
 
 
@@ -1823,25 +1897,49 @@ const handleConfirmPlayoffSchedule = () => {
                                         <div key={`${group.id}-matches`} className="mb-6">
                                             <h4 className="text-lg font-semibold text-primary mb-2">Partidos {group.name}</h4>
                                             <ul className="space-y-2">
-                                                {group.matches.map(match => (
-                                                    <li key={match.id} className="p-3 border rounded-md bg-secondary/20 text-sm">
-                                                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                                                            <div>
-                                                                <span>{match.dupla1.nombre}</span> <span className="font-bold mx-1">vs</span> <span>{match.dupla2.nombre}</span>
-                                                            </div>
-                                                            <div className="text-xs text-muted-foreground mt-1 sm:mt-0 sm:ml-2">
-                                                                ({match.court ? (typeof match.court === 'number' ? `Cancha ${match.court}`: match.court) : 'Cancha TBD'}, {match.time || 'Hora TBD'})
-                                                                {match.status === 'completed' && ` - ${match.score1} : ${match.score2}`}
-                                                            </div>
+                                                {group.matches.map((match, matchIndex) => (
+                                                    <li key={match.id} className="p-3 border rounded-md bg-secondary/20 text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                                        <div className="flex-grow font-medium">
+                                                            <span>{match.dupla1.nombre}</span> <span className="font-bold mx-1 text-primary">vs</span> <span>{match.dupla2.nombre}</span>
                                                         </div>
-                                                          <Button variant="outline" size="sm" className="mt-2 sm:mt-0 sm:ml-3 text-xs h-6 float-right" 
-                                                            onClick={() => {
-                                                                setCurrentEditingMatch({ ...match, categoryId: catFixture.categoryId, groupOriginId: match.groupOriginId || group.id });
-                                                                setIsResultModalOpen(true);
-                                                            }}
-                                                          >
-                                                            <Edit3 className="mr-1 h-3 w-3"/>{match.status === 'completed' ? 'Editar Resultado' : 'Ingresar Resultado'}
-                                                          </Button>
+                                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                                            <div className="text-xs text-muted-foreground text-right">
+                                                                <span>{match.court ? (typeof match.court === 'number' ? `Cancha ${match.court}` : match.court) : 'Cancha TBD'}, {match.time || 'Hora TBD'}</span>
+                                                                {match.status === 'completed' && <span className="font-bold ml-2">{`${match.score1} : ${match.score2}`}</span>}
+                                                            </div>
+                                                            {group.groupStartTime && match.status !== 'completed' && (
+                                                                <div className="flex border-l pl-2 ml-2">
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-6 w-6"
+                                                                        title="Mover arriba"
+                                                                        disabled={matchIndex === 0}
+                                                                        onClick={() => handleMoveMatch(catFixture.categoryId, group.id, matchIndex, 'up')}
+                                                                    >
+                                                                        <ArrowUp className="h-4 w-4" />
+                                                                    </Button>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-6 w-6"
+                                                                        title="Mover abajo"
+                                                                        disabled={matchIndex === group.matches.length - 1}
+                                                                        onClick={() => handleMoveMatch(catFixture.categoryId, group.id, matchIndex, 'down')}
+                                                                    >
+                                                                        <ArrowDown className="h-4 w-4" />
+                                                                    </Button>
+                                                                </div>
+                                                            )}
+                                                            <Button variant="outline" size="sm" className="text-xs h-7"
+                                                                onClick={() => {
+                                                                    setCurrentEditingMatch({ ...match, categoryId: catFixture.categoryId, groupOriginId: match.groupOriginId || group.id });
+                                                                    setIsResultModalOpen(true);
+                                                                }}
+                                                            >
+                                                                <Edit3 className="mr-1 h-3 w-3" />{match.status === 'completed' ? 'Editar' : 'Ingresar'}
+                                                            </Button>
+                                                        </div>
                                                     </li>
                                                 ))}
                                             </ul>
@@ -2008,9 +2106,3 @@ export default function ActiveTournamentPage() {
     </Suspense>
   );
 }
-
-    
-
-    
-
-    
