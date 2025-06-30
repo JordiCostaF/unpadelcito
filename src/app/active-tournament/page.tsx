@@ -1752,7 +1752,7 @@ const handleConfirmPlayoffSchedule = () => {
               Controla el tiempo y registra resultados de los grupos programados. Puedes iniciar múltiples cronómetros a la vez.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {activeTimers.map((timerInfo) => {
               const timer = groupTimers[timerInfo.groupId];
               if (!timer) return null;
