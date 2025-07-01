@@ -2043,6 +2043,7 @@ const handleConfirmPlayoffSchedule = () => {
                                                             <SelectValue placeholder="Selecciona duración" />
                                                         </SelectTrigger>
                                                         <SelectContent>
+                                                            <SelectItem value="1">1 min</SelectItem>
                                                             <SelectItem value="30">30 min</SelectItem>
                                                             <SelectItem value="45">45 min</SelectItem>
                                                             <SelectItem value="60">60 min</SelectItem>
@@ -2305,6 +2306,7 @@ const handleConfirmPlayoffSchedule = () => {
                               <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
+                              <SelectItem value="1">1 minuto</SelectItem>
                               <SelectItem value="30">30 minutos</SelectItem>
                               <SelectItem value="45">45 minutos</SelectItem>
                               <SelectItem value="60">60 minutos</SelectItem>
