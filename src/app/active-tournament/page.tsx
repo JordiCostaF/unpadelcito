@@ -503,29 +503,27 @@ function ActiveTournamentPageComponent() {
 
     const interval = setInterval(() => {
         setGroupTimers(prevTimers => {
-            const nextTimers: Record<string, GroupTimerState> = {};
+            const nextTimersState = { ...prevTimers };
             let hasChanged = false;
 
-            for (const groupId in prevTimers) {
-                const timer = prevTimers[groupId];
+            for (const groupId in nextTimersState) {
+                const timer = nextTimersState[groupId];
                 if (timer.isActive && timer.timeRemaining > 0) {
-                    nextTimers[groupId] = {
+                    nextTimersState[groupId] = {
                         ...timer,
                         timeRemaining: timer.timeRemaining - 1,
                     };
                     hasChanged = true;
                 } else if (timer.isActive && timer.timeRemaining <= 0) {
-                    nextTimers[groupId] = {
+                    nextTimersState[groupId] = {
                         ...timer,
                         timeRemaining: 0,
                         isActive: false,
                     };
                     hasChanged = true;
-                } else {
-                   nextTimers[groupId] = timer;
                 }
             }
-            return hasChanged ? nextTimers : prevTimers;
+            return hasChanged ? nextTimersState : prevTimers;
         });
     }, 1000);
 
@@ -1175,6 +1173,13 @@ function ActiveTournamentPageComponent() {
       
       categoryFixture.groups[groupIndex] = updatedGroup;
       
+      // Update activeTimers state to reflect the change immediately in the cronometers
+      setActiveTimers(prev => prev.map(timerInfo => 
+          timerInfo.groupId === groupId 
+              ? { ...timerInfo, matches: [...updatedGroup.matches] }
+              : timerInfo
+      ));
+
       setFixture(newFixture);
       sessionStorage.setItem(`fixture_${torneo.tournamentName}`, JSON.stringify(newFixture));
       toast({ title: "Partidos Reordenados", description: `Se actualizó el horario para el ${group.name}.` });
@@ -1753,7 +1758,7 @@ const handleConfirmPlayoffSchedule = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {activeTimers.map((timerInfo) => {
+            {activeTimers.sort((a, b) => a.court.toString().localeCompare(b.court.toString())).map((timerInfo) => {
               const timer = groupTimers[timerInfo.groupId];
               if (!timer) return null;
 
