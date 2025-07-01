@@ -2302,7 +2302,7 @@ const handleConfirmPlayoffSchedule = () => {
                                                 {/* Main Bracket */}
                                                 <div className="flex flex-col lg:flex-row items-center justify-center w-full lg:space-x-8 space-y-8 lg:space-y-0">
                                                   {/* Semifinals Column */}
-                                                  <div className="flex flex-col md:flex-row lg:flex-col items-center justify-around lg:h-[22rem] space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0 lg:space-y-16">
+                                                  <div className="flex flex-col md:flex-row lg:flex-col items-center justify-between lg:h-[22rem] space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
                                                     <PlayoffMatchBox
                                                       match={sf1 ? { ...sf1, categoryId: catFixture.categoryId } : undefined}
                                                       title="Semifinal 1"
