@@ -509,6 +509,64 @@ function ActiveTournamentPageComponent() {
   const [isNextMatchDialogOpen, setIsNextMatchDialogOpen] = useState(false);
   const [nextMatchInfo, setNextMatchInfo] = useState<{ dupla1: Dupla; dupla2: Dupla; court: string | number; categoryName: string; } | null>(null);
 
+  // --- PLAYOFF BRACKET COMPONENT ---
+  const PlayoffMatchBox = ({ 
+    match, 
+    title, 
+    winner,
+    onEditClick 
+  }: { 
+    match?: PlayoffMatch & { categoryId?: string }; 
+    title: string; 
+    winner?: boolean;
+    onEditClick: () => void;
+  }) => {
+    const dupla1Name = match?.dupla1?.nombre || 'Por definir';
+    const dupla2Name = match?.dupla2?.nombre || 'Por definir';
+    const score1 = match?.score1 ?? '-';
+    const score2 = match?.score2 ?? '-';
+    const isCompleted = match?.status === 'completed';
+  
+    const winnerId = match?.winnerId;
+    const d1IsWinner = isCompleted && winnerId === match?.dupla1?.id;
+    const d2IsWinner = isCompleted && winnerId === match?.dupla2?.id;
+    
+    const isDisabled = !match || match.dupla1.id.startsWith('placeholder-') || match.dupla2.id.startsWith('placeholder-');
+  
+    return (
+      <div className="flex flex-col items-center w-full">
+        <h4 className="text-lg font-semibold text-primary mb-2">{title}</h4>
+        <div className={`p-4 border rounded-lg w-72 bg-background text-sm shadow-md relative ${winner ? 'border-primary border-2 shadow-lg shadow-primary/20' : 'border-border'}`}>
+          <div className={`flex justify-between items-center ${d1IsWinner ? 'font-bold' : ''}`}>
+            <span>{dupla1Name}</span>
+            <span className="font-mono">{score1}</span>
+          </div>
+          <Separator className="my-2 bg-border/50" />
+          <div className={`flex justify-between items-center ${d2IsWinner ? 'font-bold' : ''}`}>
+            <span>{dupla2Name}</span>
+            <span className="font-mono">{score2}</span>
+          </div>
+          <div className="mt-4 text-center">
+              <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="text-xs h-7" 
+                  onClick={onEditClick}
+                  disabled={isDisabled}
+              >
+                  <Edit3 className="mr-1 h-3 w-3"/>
+                  {isCompleted ? 'Editar Resultado' : 'Ingresar Resultado'}
+              </Button>
+          </div>
+           <div className="text-xs text-muted-foreground text-center mt-2">
+              ({match?.court ? (typeof match.court === 'number' ? `Cancha ${match.court}`: match.court) : 'Cancha TBD'}, {match?.time || 'Hora TBD'})
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+
   // --- TIMER LOGIC REFACTOR ---
 
   // 1. Effect for TICKING the timers down. This is stable and only depends on isAnyTimerActive.
@@ -1195,7 +1253,7 @@ function ActiveTournamentPageComponent() {
         } else {
             updatedTimers.push(newTimerInfo);
         }
-        return updatedTimers;
+        return updatedTimers.sort((a, b) => a.court.toString().localeCompare(b.court.toString()));
     });
 
 
@@ -1828,7 +1886,7 @@ const handleConfirmPlayoffSchedule = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {activeTimers.sort((a, b) => a.court.toString().localeCompare(b.court.toString())).map((timerInfo) => {
+            {activeTimers.map((timerInfo) => {
               const timer = groupTimers[timerInfo.groupId];
               if (!timer) return null;
 
@@ -2039,7 +2097,15 @@ const handleConfirmPlayoffSchedule = () => {
                             </TabsTrigger>
                         ))}
                     </TabsList>
-                    {Object.values(fixture).map((catFixture) => (
+                    {Object.values(fixture).map((catFixture) => {
+                      const semifinals = catFixture.playoffMatches?.filter(m => m.stage === 'semifinal') || [];
+                      const final = catFixture.playoffMatches?.find(m => m.stage === 'final');
+                      const thirdPlace = catFixture.playoffMatches?.find(m => m.stage === 'tercer_puesto');
+                      const sf1 = semifinals.find(m => m.id.includes('SF1'));
+                      const sf2 = semifinals.find(m => m.id.includes('SF2'));
+                      const champion = final?.status === 'completed' ? (final.winnerId === final.dupla1.id ? final.dupla1.nombre : final.dupla2.nombre) : null;
+
+                      return (
                         (catFixture.groups.length > 0 || (catFixture.playoffMatches && catFixture.playoffMatches.length > 0)) &&
                         <TabsContent key={catFixture.categoryId} value={catFixture.categoryId}>
                              <div className="flex justify-end mb-2">
@@ -2204,7 +2270,7 @@ const handleConfirmPlayoffSchedule = () => {
                                 <TabsContent value="playoffs">
                                     {catFixture.playoffMatches && catFixture.playoffMatches.length > 0 ? (
                                         <div className="mb-6">
-                                            <div className="flex justify-between items-center mb-3">
+                                            <div className="flex justify-between items-center mb-4">
                                                 <h4 className="text-lg font-semibold text-primary">Fase de Playoffs</h4>
                                                 <div className="flex gap-2">
                                                     <Button
@@ -2225,49 +2291,84 @@ const handleConfirmPlayoffSchedule = () => {
                                                     </Button>
                                                 </div>
                                             </div>
-                                            <p className="text-sm text-muted-foreground mb-3">
+                                            <p className="text-sm text-muted-foreground mb-6">
                                                 {catFixture.groups.length === 0 || catFixture.groups.every(g => g.matches.every(m => m.status === 'completed')) 
                                                     ? "Define la configuración y programa los horarios y canchas para los playoffs." 
                                                     : "Completa todos los partidos de grupo y registra sus resultados para poder programar los playoffs."
                                                 }
                                             </p>
-                                            <ul className="space-y-2">
-                                                {catFixture.playoffMatches.sort((a,b) => {
-                                                    const stageOrder = (stage: PlayoffMatch['stage']) => {
-                                                        if (stage === 'final') return 0;
-                                                        if (stage === 'tercer_puesto') return 1;
-                                                        if (stage === 'semifinal') return 2;
-                                                        return 3;
-                                                    };
-                                                    if (stageOrder(a.stage) !== stageOrder(b.stage)) {
-                                                        return stageOrder(a.stage) - stageOrder(b.stage);
-                                                    }
-                                                    return (a.time || "99:99").localeCompare(b.time || "99:99") || (a.court?.toString() || "Z99").localeCompare((b.court?.toString() || "Z99"));
-                                                }).map(match => (
-                                                    <li key={match.id} className="p-3 border rounded-md bg-secondary/20 text-sm">
-                                                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                                                            <div>
-                                                                <strong>{match.stage === 'semifinal' ? 'Semifinal' : match.stage === 'final' ? 'Final' : 'Tercer Puesto'}:</strong> {match.description}
-                                                                <br/>
-                                                                <span>{match.dupla1.nombre}</span> <span className="font-bold mx-1">vs</span> <span>{match.dupla2.nombre}</span>
-                                                            </div>
-                                                              <div className="text-xs text-muted-foreground mt-1 sm:mt-0 sm:ml-2">
-                                                                ({match.court ? (typeof match.court === 'number' ? `Cancha ${match.court}`: match.court) : 'Cancha TBD'}, {match.time || 'Hora TBD'})
-                                                                {match.status === 'completed' && ` - ${match.score1} : ${match.score2}`}
-                                                            </div>
-                                                        </div>
-                                                          <Button variant="outline" size="sm" className="mt-2 sm:mt-0 sm:ml-3 text-xs h-6 float-right" 
-                                                            onClick={() => {
-                                                                setCurrentEditingMatch({ ...match, categoryId: catFixture.categoryId });
-                                                                setIsResultModalOpen(true);
-                                                            }}
-                                                            disabled={match.dupla1.id.startsWith('placeholder-') || match.dupla2.id.startsWith('placeholder-')}
-                                                          >
-                                                            <Edit3 className="mr-1 h-3 w-3"/>{match.status === 'completed' ? 'Editar Resultado' : 'Ingresar Resultado'}
-                                                          </Button>
-                                                    </li>
-                                                ))}
-                                            </ul>
+
+                                            <div className="flex flex-col items-center justify-center space-y-12">
+                                                {/* Main Bracket */}
+                                                <div className="flex flex-col lg:flex-row items-center justify-center w-full lg:space-x-8 space-y-8 lg:space-y-0">
+                                                  {/* Semifinals Column */}
+                                                  <div className="flex flex-col md:flex-row lg:flex-col items-center justify-around lg:h-[22rem] space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0 lg:space-y-16">
+                                                    <PlayoffMatchBox
+                                                      match={sf1 ? { ...sf1, categoryId: catFixture.categoryId } : undefined}
+                                                      title="Semifinal 1"
+                                                      onEditClick={() => {
+                                                        if(sf1) {
+                                                          setCurrentEditingMatch({ ...sf1, categoryId: catFixture.categoryId });
+                                                          setIsResultModalOpen(true);
+                                                        }
+                                                      }}
+                                                    />
+                                                    <PlayoffMatchBox
+                                                      match={sf2 ? { ...sf2, categoryId: catFixture.categoryId } : undefined}
+                                                      title="Semifinal 2"
+                                                      onEditClick={() => {
+                                                        if(sf2) {
+                                                          setCurrentEditingMatch({ ...sf2, categoryId: catFixture.categoryId });
+                                                          setIsResultModalOpen(true);
+                                                        }
+                                                      }}
+                                                    />
+                                                  </div>
+
+                                                  <div className="h-full hidden lg:flex items-center">
+                                                     <ChevronRight className="h-12 w-12 text-primary/50" />
+                                                  </div>
+                                                  
+                                                  <PlayoffMatchBox
+                                                    match={final ? { ...final, categoryId: catFixture.categoryId } : undefined}
+                                                    title="Final"
+                                                    winner={!!champion}
+                                                    onEditClick={() => {
+                                                      if(final) {
+                                                        setCurrentEditingMatch({ ...final, categoryId: catFixture.categoryId });
+                                                        setIsResultModalOpen(true);
+                                                      }
+                                                    }}
+                                                  />
+                                                </div>
+                                                
+                                                {champion && (
+                                                  <div className="text-center py-4 border-t-2 border-b-2 border-dashed border-primary/50 w-full max-w-md">
+                                                    <h3 className="text-2xl font-bold uppercase tracking-widest text-primary">CAMPEÓN</h3>
+                                                    <p className="text-4xl font-bold flex items-center justify-center mt-2">
+                                                      <TrophyIcon className="h-10 w-10 mr-4 text-primary" />
+                                                      {champion}
+                                                      <TrophyIcon className="h-10 w-10 ml-4 text-primary" />
+                                                    </p>
+                                                  </div>
+                                                )}
+
+                                                {/* Third Place Match */}
+                                                {thirdPlace && (
+                                                  <div className="pt-8 mt-8 border-t-2 border-dashed border-primary/50 w-full flex justify-center">
+                                                    <PlayoffMatchBox
+                                                      match={thirdPlace ? { ...thirdPlace, categoryId: catFixture.categoryId } : undefined}
+                                                      title="Tercer Puesto"
+                                                      onEditClick={() => {
+                                                        if(thirdPlace) {
+                                                          setCurrentEditingMatch({ ...thirdPlace, categoryId: catFixture.categoryId });
+                                                          setIsResultModalOpen(true);
+                                                        }
+                                                      }}
+                                                    />
+                                                  </div>
+                                                )}
+                                            </div>
                                         </div>
                                     ) : (
                                         <p className="text-muted-foreground text-center py-3">La fase de playoffs no aplica o no ha sido generada para esta categoría (requiere 2 grupos con al menos 2 duplas c/u y resultados para la estructura actual).</p>
@@ -2275,7 +2376,8 @@ const handleConfirmPlayoffSchedule = () => {
                                 </TabsContent>
                             </Tabs>
                         </TabsContent>
-                    ))}
+                      )
+                    })}
                   </Tabs>
             </CardContent>
         </Card>
