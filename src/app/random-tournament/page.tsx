@@ -701,7 +701,7 @@ export default function RandomTournamentPage() {
                         <div>
                           <p className="font-semibold capitalize">{category.type} - {category.level}</p>
                         </div>
-                        <Button variant="ghost" size="icon" onClick={() => {
+                        <Button variant="ghost" size="icon" type="button" onClick={() => {
                           const playersInCategory = playerFields.filter(p => p.categoryId === category.id);
                           if (playersInCategory.length > 0) {
                             toast({
@@ -735,7 +735,7 @@ export default function RandomTournamentPage() {
             <CardHeader>
               <div className="flex justify-between items-center">
                  <CardTitle className="text-2xl flex items-center"><Users className="mr-2 h-6 w-6 text-primary" />Inscribir Jugadores</CardTitle>
-                 <Button variant="outline" size="sm" onClick={() => setIsClearPoolDialogOpen(true)} disabled={playerPool.length === 0}>
+                 <Button variant="outline" size="sm" type="button" onClick={() => setIsClearPoolDialogOpen(true)} disabled={playerPool.length === 0}>
                     <Eraser className="mr-2 h-4 w-4" /> Limpiar Jugadores Guardados
                   </Button>
               </div>
@@ -867,10 +867,10 @@ export default function RandomTournamentPage() {
                                     </div>
                                   </div>
                                   <div className="flex items-center space-x-1">
-                                    <Button variant="ghost" size="icon" onClick={() => handleOpenEditPlayerModal(player, playerIndex)}>
+                                    <Button variant="ghost" size="icon" type="button" onClick={() => handleOpenEditPlayerModal(player, playerIndex)}>
                                       <Pencil className="h-5 w-5 text-blue-500" />
                                     </Button>
-                                    <Button variant="ghost" size="icon" onClick={() => {
+                                    <Button variant="ghost" size="icon" type="button" onClick={() => {
                                       const playerGlobalIndex = watchedPlayers.findIndex(p => p.id === player.id);
                                       if (playerGlobalIndex !== -1) {
                                         removePlayer(playerGlobalIndex);
