@@ -51,6 +51,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Switch } from "@/components/ui/switch";
 import html2canvas from "html2canvas";
 import { ShareableFixture } from "@/components/ShareableFixture";
+import { ShareablePlayoffs } from "@/components/ShareablePlayoffs";
 
 
 // Renaming imported types to avoid conflicts if this page also defines its own PlayerFormValues
@@ -499,6 +500,11 @@ function ActiveTournamentPageComponent() {
   const [categoryToShare, setCategoryToShare] = useState<CategoryFixture | null>(null);
   const [isSharing, setIsSharing] = useState(false);
 
+  // New state for playoff sharing
+  const playoffShareableRef = useRef<HTMLDivElement>(null);
+  const [playoffToShare, setPlayoffToShare] = useState<CategoryFixture | null>(null);
+  const [isSharingPlayoffs, setIsSharingPlayoffs] = useState(false);
+
   // New state for the "Next Match" dialog
   const [isNextMatchDialogOpen, setIsNextMatchDialogOpen] = useState(false);
   const [nextMatchInfo, setNextMatchInfo] = useState<{ dupla1: Dupla; dupla2: Dupla; court: string | number; categoryName: string; } | null>(null);
@@ -724,6 +730,47 @@ function ActiveTournamentPageComponent() {
       }, 250);
     }
   }, [categoryToShare, torneo, toast, isSharing]);
+
+  useEffect(() => {
+    if (playoffToShare && playoffShareableRef.current && !isSharingPlayoffs) {
+      setIsSharingPlayoffs(true);
+      toast({
+        title: "Generando imagen de Playoffs...",
+        description: "Por favor espera un momento.",
+      });
+
+      setTimeout(() => {
+        html2canvas(playoffShareableRef.current!, { 
+          scale: 2,
+          useCORS: true,
+           backgroundColor: '#0A0A0A'
+        }).then((canvas) => {
+          const image = canvas.toDataURL("image/png");
+          const link = document.createElement("a");
+          link.href = image;
+          const fileName = `playoffs-${torneo!.tournamentName}-${playoffToShare.categoryName}.png`.replace(/\s+/g, '_').toLowerCase();
+          link.download = fileName;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          toast({
+            title: "¡Imagen de Playoffs generada!",
+            description: "La descarga de la imagen ha comenzado.",
+          });
+        }).catch((err) => {
+          console.error("Error al generar la imagen de playoffs:", err);
+           toast({
+            title: "Error al generar imagen",
+            description: "No se pudo crear la imagen de los playoffs. Inténtalo de nuevo.",
+            variant: "destructive"
+          });
+        }).finally(() => {
+          setPlayoffToShare(null);
+          setIsSharingPlayoffs(false);
+        });
+      }, 250);
+    }
+  }, [playoffToShare, torneo, toast, isSharingPlayoffs]);
 
 
   const resultForm = useForm<ResultFormValues>({
@@ -2159,13 +2206,24 @@ const handleConfirmPlayoffSchedule = () => {
                                         <div className="mb-6">
                                             <div className="flex justify-between items-center mb-3">
                                                 <h4 className="text-lg font-semibold text-primary">Fase de Playoffs</h4>
-                                                <Button 
-                                                    onClick={() => handleOpenPlayoffScheduler(catFixture.categoryId)}
-                                                    disabled={!catFixture.groups.every(g => g.matches.every(m => m.status === 'completed')) && catFixture.groups.length > 0}
-                                                    size="sm"
-                                                >
-                                                    <CalendarIconLucide className="mr-2 h-4 w-4" /> Programar Playoffs
-                                                </Button>
+                                                <div className="flex gap-2">
+                                                    <Button
+                                                      onClick={() => setPlayoffToShare(catFixture)}
+                                                      disabled={isSharingPlayoffs}
+                                                      size="sm"
+                                                      variant="outline"
+                                                    >
+                                                      <Share2 className="mr-2 h-4 w-4" />
+                                                      Compartir Playoffs
+                                                    </Button>
+                                                    <Button 
+                                                        onClick={() => handleOpenPlayoffScheduler(catFixture.categoryId)}
+                                                        disabled={!catFixture.groups.every(g => g.matches.every(m => m.status === 'completed')) && catFixture.groups.length > 0}
+                                                        size="sm"
+                                                    >
+                                                        <CalendarIconLucide className="mr-2 h-4 w-4" /> Programar Playoffs
+                                                    </Button>
+                                                </div>
                                             </div>
                                             <p className="text-sm text-muted-foreground mb-3">
                                                 {catFixture.groups.length === 0 || catFixture.groups.every(g => g.matches.every(m => m.status === 'completed')) 
@@ -2333,6 +2391,7 @@ const handleConfirmPlayoffSchedule = () => {
       </Dialog>
       <div style={{ position: 'absolute', left: '-9999px', top: 0, zIndex: -1 }}>
          {torneo && <ShareableFixture ref={shareableRef} tournamentName={torneo.tournamentName} categoryFixture={categoryToShare} />}
+         {torneo && <ShareablePlayoffs ref={playoffShareableRef} tournamentName={torneo.tournamentName} categoryFixture={playoffToShare} />}
       </div>
     </div>
   );
