@@ -166,6 +166,15 @@ interface ActiveTimerInfo {
   matches: Match[];
 }
 
+// Helper function to shuffle an array
+function shuffleArray<T>(array: T[]): T[] {
+  const newArray = [...array];
+  for (let i = newArray.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+  }
+  return newArray;
+}
 
 function compareStandingsNumerically(sA: Standing, sB: Standing): number {
   // 1. Puntos (descendente)
@@ -961,7 +970,7 @@ function ActiveTournamentPageComponent() {
         }
 
         const groups: Group[] = [];
-        const categoryDuplas = [...category.duplas]; 
+        const categoryDuplas = shuffleArray([...category.duplas]); 
         const numCategoryDuplas = categoryDuplas.length;
         let groupLetter = 'A';
 
@@ -1291,7 +1300,9 @@ function ActiveTournamentPageComponent() {
                         : timerInfo
                 ));
                 
-                handleTimerControl(currentEditingMatch.groupOriginId, 'reset');
+                if (activeTimers.some(t => t.groupId === currentEditingMatch.groupOriginId)) {
+                  handleTimerControl(currentEditingMatch.groupOriginId, 'reset');
+                }
 
                 const newCurrentMatch = updatedGroup.matches.find(m => m.status !== 'completed');
                 if (newCurrentMatch) {
@@ -1759,7 +1770,7 @@ const handleConfirmPlayoffSchedule = () => {
               Controla el tiempo y registra resultados de los grupos programados. Puedes iniciar múltiples cronómetros a la vez.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
             {activeTimers.sort((a, b) => a.court.toString().localeCompare(b.court.toString())).map((timerInfo) => {
               const timer = groupTimers[timerInfo.groupId];
               if (!timer) return null;
