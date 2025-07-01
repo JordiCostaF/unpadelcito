@@ -144,6 +144,13 @@ const resultFormSchema = z.object({
 
 type ResultFormValues = z.infer<typeof resultFormSchema>;
 
+const editDuplaSchema = z.object({
+  player1Name: z.string().min(2, { message: "El nombre debe tener al menos 2 caracteres." }),
+  player2Name: z.string().min(2, { message: "El nombre debe tener al menos 2 caracteres." }),
+});
+type EditDuplaFormValues = z.infer<typeof editDuplaSchema>;
+
+
 interface GroupScheduleState {
   [groupId: string]: {
     court: string;
@@ -301,6 +308,80 @@ function ResultDialog({ isOpen, onClose, match, onSubmit, form }: ResultDialogPr
             <DialogFooter>
               <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
               <Button type="submit"><Save className="mr-2 h-4 w-4" />Guardar Resultado</Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface EditDuplaDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  duplaInfo: { dupla: Dupla; categoryId: string } | null;
+  onSubmit: (data: EditDuplaFormValues) => void;
+  form: UseFormReturn<EditDuplaFormValues>;
+}
+
+function EditDuplaDialog({ isOpen, onClose, duplaInfo, onSubmit, form }: EditDuplaDialogProps) {
+  useEffect(() => {
+    if (isOpen && duplaInfo) {
+      form.reset({
+        player1Name: duplaInfo.dupla.jugadores[0].name,
+        player2Name: duplaInfo.dupla.jugadores[1].name,
+      });
+    } else if (!isOpen) {
+      form.reset({ player1Name: "", player2Name: "" });
+    }
+  }, [isOpen, duplaInfo, form]);
+
+  if (!isOpen || !duplaInfo) {
+    return null;
+  }
+  
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sm:max-w-[425px]">
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)}>
+            <DialogHeader>
+              <DialogTitle>Editar Dupla</DialogTitle>
+              <DialogDescription>
+                Cambia los nombres de los jugadores. Este cambio se reflejará en todo el torneo.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <FormField
+                control={form.control}
+                name="player1Name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel htmlFor="player1Name">Nombre Jugador 1</FormLabel>
+                    <FormControl>
+                      <Input id="player1Name" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="player2Name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel htmlFor="player2Name">Nombre Jugador 2</FormLabel>
+                    <FormControl>
+                      <Input id="player2Name" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
+              <Button type="submit"><Save className="mr-2 h-4 w-4" />Guardar Cambios</Button>
             </DialogFooter>
           </form>
         </Form>
@@ -488,6 +569,9 @@ function ActiveTournamentPageComponent() {
   const [toastWarnings, setToastWarnings] = useState<Map<string, React.ReactNode>>(new Map());
   const [timeAddedInfo, setTimeAddedInfo] = useState<{ groupName: string; minutes: number } | null>(null);
 
+  // Dupla editing state
+  const [isEditDuplaModalOpen, setIsEditDuplaModalOpen] = useState(false);
+  const [editingDuplaInfo, setEditingDuplaInfo] = useState<{dupla: Dupla; categoryId: string;} | null>(null);
 
   const [isPlayoffSchedulerDialogOpen, setIsPlayoffSchedulerDialogOpen] = useState(false);
   const [categoryForPlayoffScheduling, setCategoryForPlayoffScheduling] = useState<CategoriaConDuplas | null>(null);
@@ -837,6 +921,10 @@ function ActiveTournamentPageComponent() {
       score1: "",
       score2: "",
     },
+  });
+
+  const editDuplaForm = useForm<EditDuplaFormValues>({
+    resolver: zodResolver(editDuplaSchema),
   });
 
 
@@ -1712,6 +1800,115 @@ const handleConfirmPlayoffSchedule = () => {
     setIsPlayoffSchedulerDialogOpen(false);
 };
 
+  const handleOpenEditDuplaModal = (dupla: Dupla, categoryId: string) => {
+    setEditingDuplaInfo({ dupla, categoryId });
+    setIsEditDuplaModalOpen(true);
+  };
+
+  const handleUpdateDupla = (data: EditDuplaFormValues) => {
+    if (!editingDuplaInfo || !torneo) return;
+
+    const { dupla, categoryId } = editingDuplaInfo;
+    const newPlayer1Name = data.player1Name;
+    const newPlayer2Name = data.player2Name;
+    const newDuplaName = `${newPlayer1Name} / ${newPlayer2Name}`;
+
+    const updatedTorneo = JSON.parse(JSON.stringify(torneo)) as TorneoActivoData;
+    const updatedFixture = fixture ? JSON.parse(JSON.stringify(fixture)) as FixtureData : null;
+
+    const categoryInTorneo = updatedTorneo.categoriesWithDuplas.find(c => c.id === categoryId);
+    if (categoryInTorneo) {
+        const duplaInTorneo = categoryInTorneo.duplas.find(d => d.id === dupla.id);
+        if (duplaInTorneo) {
+            duplaInTorneo.jugadores[0].name = newPlayer1Name;
+            duplaInTorneo.jugadores[1].name = newPlayer2Name;
+            duplaInTorneo.nombre = newDuplaName;
+        }
+    }
+
+    if (updatedFixture) {
+        Object.values(updatedFixture).forEach(catFix => {
+            catFix.groups.forEach(group => {
+                const duplaInGroup = group.duplas.find(d => d.id === dupla.id);
+                if (duplaInGroup) {
+                    duplaInGroup.jugadores[0].name = newPlayer1Name;
+                    duplaInGroup.jugadores[1].name = newPlayer2Name;
+                    duplaInGroup.nombre = newDuplaName;
+                }
+
+                const standing = group.standings.find(s => s.duplaId === dupla.id);
+                if (standing) {
+                    standing.duplaName = newDuplaName;
+                }
+
+                group.matches.forEach(match => {
+                    if (match.dupla1.id === dupla.id) {
+                        match.dupla1.nombre = newDuplaName;
+                        match.dupla1.jugadores[0].name = newPlayer1Name;
+                        match.dupla1.jugadores[1].name = newPlayer2Name;
+                    }
+                    if (match.dupla2.id === dupla.id) {
+                        match.dupla2.nombre = newDuplaName;
+                        match.dupla2.jugadores[0].name = newPlayer1Name;
+                        match.dupla2.jugadores[1].name = newPlayer2Name;
+                    }
+                });
+            });
+
+            if (catFix.playoffMatches) {
+                catFix.playoffMatches.forEach(match => {
+                     if (match.dupla1.id === dupla.id) {
+                        match.dupla1.nombre = newDuplaName;
+                        if(match.dupla1.jugadores && match.dupla1.jugadores.length === 2) {
+                           match.dupla1.jugadores[0].name = newPlayer1Name;
+                           match.dupla1.jugadores[1].name = newPlayer2Name;
+                        }
+                    }
+                    if (match.dupla2.id === dupla.id) {
+                        match.dupla2.nombre = newDuplaName;
+                         if(match.dupla2.jugadores && match.dupla2.jugadores.length === 2) {
+                           match.dupla2.jugadores[0].name = newPlayer1Name;
+                           match.dupla2.jugadores[1].name = newPlayer2Name;
+                        }
+                    }
+                });
+            }
+        });
+        setFixture(updatedFixture);
+        sessionStorage.setItem(`fixture_${torneo.tournamentName}`, JSON.stringify(updatedFixture));
+    }
+
+    setTorneo(updatedTorneo);
+    const updatedList = listaTorneos.map(t =>
+        t.tournamentName === updatedTorneo.tournamentName ? updatedTorneo : t
+    );
+    setListaTorneos(updatedList);
+    sessionStorage.setItem('listaTorneosActivos', JSON.stringify(updatedList));
+
+    setActiveTimers(prevActiveTimers => {
+        const newActiveTimers = JSON.parse(JSON.stringify(prevActiveTimers)) as ActiveTimerInfo[];
+        newActiveTimers.forEach(timer => {
+            timer.matches.forEach(match => {
+                if (match.dupla1.id === dupla.id) {
+                    match.dupla1.nombre = newDuplaName;
+                }
+                if (match.dupla2.id === dupla.id) {
+                    match.dupla2.nombre = newDuplaName;
+                }
+            });
+        });
+        return newActiveTimers;
+    });
+
+    setIsEditDuplaModalOpen(false);
+    setEditingDuplaInfo(null);
+    editDuplaForm.reset();
+    toast({
+        title: "Dupla Actualizada",
+        description: `La dupla ahora es ${newDuplaName}. Los cambios se han reflejado en todo el torneo.`
+    });
+  };
+
 
   if (isLoading) {
     return (
@@ -2044,6 +2241,9 @@ const handleConfirmPlayoffSchedule = () => {
                             <h4 className="font-semibold text-primary flex items-center text-md md:text-lg">
                                 <Swords className="mr-2 h-5 w-5" /> Dupla {index + 1}: {dupla.nombre}
                             </h4>
+                            <Button variant="ghost" size="icon" onClick={() => handleOpenEditDuplaModal(dupla, categoria.id)}>
+                              <Edit className="h-4 w-4 text-blue-500" />
+                            </Button>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-sm">
                           <div>
@@ -2378,7 +2578,7 @@ const handleConfirmPlayoffSchedule = () => {
                         </TabsContent>
                       )
                     })}
-                  </Tabs>
+                </Tabs>
             </CardContent>
         </Card>
       )}
@@ -2405,6 +2605,18 @@ const handleConfirmPlayoffSchedule = () => {
         match={currentEditingMatch}
         onSubmit={handleSaveResult}
         form={resultForm}
+      />
+
+      <EditDuplaDialog
+        isOpen={isEditDuplaModalOpen}
+        onClose={() => {
+          setIsEditDuplaModalOpen(false);
+          setEditingDuplaInfo(null);
+          editDuplaForm.reset();
+        }}
+        duplaInfo={editingDuplaInfo}
+        onSubmit={handleUpdateDupla}
+        form={editDuplaForm}
       />
 
       <Dialog open={isNextMatchDialogOpen} onOpenChange={setIsNextMatchDialogOpen}>
