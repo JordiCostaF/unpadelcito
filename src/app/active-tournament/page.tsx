@@ -1290,6 +1290,8 @@ function ActiveTournamentPageComponent() {
                         ? { ...timerInfo, matches: [...updatedGroup.matches] }
                         : timerInfo
                 ));
+                
+                handleTimerControl(currentEditingMatch.groupOriginId, 'reset');
 
                 const newCurrentMatch = updatedGroup.matches.find(m => m.status !== 'completed');
                 if (newCurrentMatch) {
