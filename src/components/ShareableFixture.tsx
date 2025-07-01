@@ -20,8 +20,8 @@ export const ShareableFixture = React.forwardRef<HTMLDivElement, ShareableFixtur
         // Increased width to better accommodate two columns.
         width: '1200px', 
         fontFamily: "'PT Sans', sans-serif",
-        backgroundColor: '#F5F5DC', // Light Sand, from globals.css theme
-        color: '#333333', // Dark gray for text
+        backgroundColor: '#0A0A0A', // Dark background
+        color: '#FFFFFF', // White text
         padding: '2rem',
     };
 

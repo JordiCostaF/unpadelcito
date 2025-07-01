@@ -686,7 +686,7 @@ function ActiveTournamentPageComponent() {
         html2canvas(shareableRef.current!, { 
           scale: 2,
           useCORS: true,
-           backgroundColor: '#F5F5DC' 
+           backgroundColor: '#0A0A0A'
         }).then((canvas) => {
           const image = canvas.toDataURL("image/png");
           const link = document.createElement("a");
@@ -1770,7 +1770,7 @@ const handleConfirmPlayoffSchedule = () => {
               Controla el tiempo y registra resultados de los grupos programados. Puedes iniciar múltiples cronómetros a la vez.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {activeTimers.sort((a, b) => a.court.toString().localeCompare(b.court.toString())).map((timerInfo) => {
               const timer = groupTimers[timerInfo.groupId];
               if (!timer) return null;
