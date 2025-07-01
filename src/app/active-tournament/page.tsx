@@ -485,6 +485,7 @@ function ActiveTournamentPageComponent() {
   const isAnyTimerActive = Object.values(groupTimers).some(t => t.isActive);
   const prevGroupTimers = usePrevious(groupTimers);
   const [toastWarnings, setToastWarnings] = useState<Map<string, React.ReactNode>>(new Map());
+  const [timeAddedInfo, setTimeAddedInfo] = useState<{ groupName: string; minutes: number } | null>(null);
 
 
   const [isPlayoffSchedulerDialogOpen, setIsPlayoffSchedulerDialogOpen] = useState(false);
@@ -612,6 +613,17 @@ function ActiveTournamentPageComponent() {
     }
   }, [toastWarnings, toast]);
 
+  // Effect for showing "time added" toast
+  useEffect(() => {
+    if (timeAddedInfo) {
+      toast({
+          title: "Tiempo Añadido",
+          description: `Se han añadido ${timeAddedInfo.minutes} ${timeAddedInfo.minutes === 1 ? 'minuto' : 'minutos'} para calentamiento en ${timeAddedInfo.groupName}.`,
+      });
+      setTimeAddedInfo(null); // Reset after showing to avoid re-triggering
+    }
+  }, [timeAddedInfo, toast]);
+
 
   const handleTimerControl = (groupId: string, action: 'start' | 'pause' | 'reset' | 'addTime', minutesToAdd?: number) => {
       setGroupTimers(prev => {
@@ -644,25 +656,23 @@ function ActiveTournamentPageComponent() {
               case 'addTime':
                   if (minutesToAdd) {
                       const addedSeconds = minutesToAdd * 60;
-                      const timerInfo = activeTimers.find(t => t.groupId === groupId);
-                      
                       newTimers[groupId] = { 
                           ...timer, 
                           timeRemaining: timer.timeRemaining + addedSeconds,
                           initialDuration: timer.initialDuration + addedSeconds,
                       };
-
-                      if (timerInfo) {
-                          toast({
-                              title: "Tiempo Añadido",
-                              description: `Se han añadido ${minutesToAdd} ${minutesToAdd === 1 ? 'minuto' : 'minutos'} para calentamiento en ${timerInfo.groupName}.`
-                          });
-                      }
                   }
                   break;
           }
           return newTimers;
       });
+
+      if (action === 'addTime' && minutesToAdd) {
+        const timerInfo = activeTimers.find(t => t.groupId === groupId);
+        if (timerInfo) {
+            setTimeAddedInfo({ groupName: timerInfo.groupName, minutes: minutesToAdd });
+        }
+      }
   };
 
   const formatTime = (totalSeconds: number): string => {
