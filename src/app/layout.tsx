@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { MainLayout } from '@/components/layout/MainLayout';
+import { ThemeProvider } from "@/components/ThemeProvider";
 
 export const metadata: Metadata = {
   title: 'unpadelcito',
@@ -20,7 +21,14 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet" />
       </head>
       <body className="font-body antialiased">
-        <MainLayout>{children}</MainLayout>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <MainLayout>{children}</MainLayout>
+        </ThemeProvider>
       </body>
     </html>
   );

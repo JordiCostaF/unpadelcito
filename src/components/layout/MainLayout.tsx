@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { PadelRacketIcon } from '@/components/icons/PadelRacketIcon';
 import { Toaster } from "@/components/ui/toaster";
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 type MainLayoutProps = {
   children: ReactNode;
@@ -16,7 +17,9 @@ export function MainLayout({ children }: MainLayoutProps) {
             <PadelRacketIcon className="h-7 w-7 text-primary" />
             <span className="font-bold text-xl font-headline text-primary">unpadelcito</span>
           </Link>
-          {/* Future navigation links can be placed here */}
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+          </div>
         </div>
       </header>
       <main className="flex-1">{children}</main>
