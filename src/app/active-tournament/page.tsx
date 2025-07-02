@@ -392,8 +392,37 @@ function EditDuplaDialog({ isOpen, onClose, duplaInfo, onSubmit, form }: EditDup
 }
 
 
-function generateAndOrderGroupMatches(duplasInGroup: Dupla[], groupId: string): Match[] {
-  // 1. Generar todos los posibles partidos (usando combinatoria)
+function generateAndOrderGroupMatches(duplasInGroup: Dupla[], groupId: string, isAmericanoMode: boolean): Match[] {
+  // Modo Torneo for groups of 4
+  if (!isAmericanoMode && duplasInGroup.length === 4) {
+      const duplas = shuffleArray(duplasInGroup); // Shuffle to make initial pairings random
+      const [d1, d2, d3, d4] = duplas;
+      
+      const matchTuples: [Dupla, Dupla][] = [
+          [d1, d2],
+          [d3, d4],
+          [d1, d4], // Corresponds to user's example: winner-like(1v2) vs loser-like(3v4)
+          [d2, d3], // Corresponds to user's example: loser-like(1v2) vs winner-like(3v4)
+      ];
+
+      return matchTuples.map((tuple, index) => ({
+          id: `${groupId}-M${index + 1}`,
+          dupla1: tuple[0],
+          dupla2: tuple[1],
+          status: 'pending',
+          groupOriginId: groupId,
+          court: undefined,
+          time: undefined,
+          score1: undefined,
+          score2: undefined,
+          winnerId: undefined,
+          round: undefined,
+      }));
+  }
+  
+  // Modo Americano (Round Robin) for all other cases
+  // This logic is already correct for groups of 3 (each plays 2 matches)
+  // And it's the default for other sizes or when Americano mode is on.
   const allPossibleMatchTuples: [Dupla, Dupla][] = [];
   for (let i = 0; i < duplasInGroup.length; i++) {
     for (let j = i + 1; j < duplasInGroup.length; j++) {
@@ -404,12 +433,11 @@ function generateAndOrderGroupMatches(duplasInGroup: Dupla[], groupId: string): 
   if (allPossibleMatchTuples.length === 0) {
     return [];
   }
-
-  // 2. Organizar los partidos evitando repeticiones seguidas, como en el ejemplo de Python
+  
+  // The existing scheduling logic is fine for round-robin
   const scheduledOrderTuples: [Dupla, Dupla][] = [];
   let remainingMatchTuples = [...allPossibleMatchTuples];
 
-  // Empezamos con el primer partido de la lista
   if (remainingMatchTuples.length > 0) {
     scheduledOrderTuples.push(remainingMatchTuples.shift()!);
   }
@@ -417,9 +445,7 @@ function generateAndOrderGroupMatches(duplasInGroup: Dupla[], groupId: string): 
   while (remainingMatchTuples.length > 0) {
     const lastMatchTuple = scheduledOrderTuples[scheduledOrderTuples.length - 1];
     const [lastDupla1, lastDupla2] = lastMatchTuple;
-    let foundNextMatch = false;
-
-    // Buscar el siguiente partido donde ninguna dupla se repita
+    
     let nextMatchIndex = -1;
     for (let i = 0; i < remainingMatchTuples.length; i++) {
       const currentCandidateTuple = remainingMatchTuples[i];
@@ -431,17 +457,14 @@ function generateAndOrderGroupMatches(duplasInGroup: Dupla[], groupId: string): 
         candidateDupla2.id !== lastDupla1.id &&
         candidateDupla2.id !== lastDupla2.id
       ) {
-        // Se encontró un partido adecuado
         nextMatchIndex = i;
-        break; // Salir del bucle for
+        break; 
       }
     }
 
-    // Si el bucle for terminó y encontramos un partido
     if (nextMatchIndex !== -1) {
         scheduledOrderTuples.push(remainingMatchTuples.splice(nextMatchIndex, 1)[0]);
     } else if (remainingMatchTuples.length > 0) {
-        // Si no se encontró un partido sin repetición, se agrega el primer partido que quede
         scheduledOrderTuples.push(remainingMatchTuples.shift()!);
     }
   }
@@ -1180,6 +1203,8 @@ function ActiveTournamentPageComponent() {
         toast({ title: "Error de Configuración", description: "Por favor, selecciona un número de grupos válido.", variant: "destructive" });
         return;
     }
+    
+    const currentIsAmericanoMode = isAmericanoMode;
 
     const category = torneo.categoriesWithDuplas.find(c => c.id === categoryId);
     if (!category || category.duplas.length < 3) {
@@ -1211,7 +1236,7 @@ function ActiveTournamentPageComponent() {
             name: `Grupo ${groupLetter}`,
             duplas: groupDuplas,
             standings: groupDuplas.map(d => ({ duplaId: d.id, duplaName: d.nombre, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0, pts: 0 })),
-            matches: generateAndOrderGroupMatches(groupDuplas, groupId),
+            matches: generateAndOrderGroupMatches(groupDuplas, groupId, currentIsAmericanoMode),
             groupAssignedCourt: undefined,
             groupStartTime: undefined,
             groupMatchDuration: undefined,
