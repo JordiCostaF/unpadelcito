@@ -1167,15 +1167,15 @@ function ActiveTournamentPageComponent() {
     }
 
     const category = torneo.categoriesWithDuplas.find(c => c.id === categoryId);
-    if (!category || category.duplas.length < 2) {
-        toast({ title: "Error", description: "No hay suficientes duplas en esta categoría para generar grupos.", variant: "destructive" });
+    if (!category || category.duplas.length < 3) {
+        toast({ title: "Error", description: "Se necesitan al menos 3 duplas en esta categoría para generar grupos.", variant: "destructive" });
         return;
     }
 
-    if (Math.floor(category.duplas.length / numGroups) < 2) {
+    if (Math.floor(category.duplas.length / numGroups) < 3) {
         toast({
             title: "Configuración Inválida",
-            description: `No se pueden crear ${numGroups} grupos. Cada grupo debe tener al menos 2 duplas. Prueba con menos grupos.`,
+            description: `No se pueden crear ${numGroups} grupos. Cada grupo debe tener al menos 3 duplas. Prueba con menos grupos.`,
             variant: "destructive"
         });
         return;
@@ -2242,7 +2242,7 @@ const handleConfirmPlayoffSchedule = () => {
                     </ul>
                   </div>
                 )}
-                {(!fixture || !fixture[categoria.id]) && categoria.duplas.length >= 2 && (
+                {(!fixture || !fixture[categoria.id]) && categoria.duplas.length >= 3 && (
                     <div className="mt-6 pt-4 border-t">
                         <h4 className="font-semibold text-primary mb-2">Generar Grupos</h4>
                         <div className="flex flex-col sm:flex-row items-end gap-4">
@@ -2256,7 +2256,7 @@ const handleConfirmPlayoffSchedule = () => {
                                         <SelectValue placeholder="Seleccionar número de grupos" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {Array.from({ length: Math.floor(categoria.duplas.length / 2) }, (_, i) => i + 1).map(num => (
+                                        {Array.from({ length: Math.floor(categoria.duplas.length / 3) }, (_, i) => i + 1).map(num => (
                                             <SelectItem key={num} value={num.toString()}>{num} {num > 1 ? 'grupos' : 'grupo'}</SelectItem>
                                         ))}
                                     </SelectContent>
