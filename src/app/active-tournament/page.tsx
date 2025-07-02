@@ -186,15 +186,15 @@ function shuffleArray<T>(array: T[]): T[] {
 
 function compareStandingsNumerically(sA: Standing, sB: Standing): number {
   // 1. Puntos (descendente)
-  if (sA.pts !== sB.pts) return sB.pts - sA.pts;
+  if (sA.pts !== sB.pts) return sB.pts - sB.pts;
   // 2. Partidos Ganados (descendente)
-  if (sA.pg !== sB.pg) return sB.pg - sA.pg;
+  if (sA.pg !== sB.pg) return sB.pg - sB.pg;
   // 3. Diferencia de Puntos (descendente)
   const diffA = sA.pf - sA.pc;
   const diffB = sB.pf - sB.pc;
   if (diffA !== diffB) return diffB - diffA;
   // 4. Puntos a Favor (descendente)
-  if (sA.pf !== sB.pf) return sB.pf - sA.pf;
+  if (sA.pf !== sB.pf) return sB.pf - sB.pf;
   // 5. Puntos en Contra (ascendente, menos es mejor)
   if (sA.pc !== sB.pc) return sA.pc - sB.pc;
   // Si todo es igual, se considera empate numérico
@@ -727,13 +727,10 @@ function ActiveTournamentPageComponent() {
 
       // Check for timer finished (transition from active to inactive at zero)
       if (prevTimer.isActive && !currentTimer.isActive && currentTimer.timeRemaining === 0) {
-        toast({
-          title: "¡Tiempo Terminado!",
-          description: `El tiempo para ${timerInfo.groupName} (${timerInfo.categoryName}) ha finalizado.`,
-        });
+        setTimeAddedInfo({ groupName: `${timerInfo.groupName} (${timerInfo.categoryName})`, minutes: 0 }); // Using a special value to indicate time's up
       }
     }
-  }, [groupTimers, prevGroupTimers, activeTimers, toast]);
+  }, [groupTimers, prevGroupTimers, activeTimers]);
 
   // 3. Effect for showing/updating the cumulative warning toast.
   useEffect(() => {
@@ -762,14 +759,21 @@ function ActiveTournamentPageComponent() {
     }
   }, [toastWarnings, toast]);
 
-  // Effect for showing "time added" toast
+  // Effect for showing "time added" or "time's up" toast
   useEffect(() => {
     if (timeAddedInfo) {
-      toast({
+      if (timeAddedInfo.minutes === 0) {
+        toast({
+          title: "¡Tiempo Terminado!",
+          description: `El tiempo para ${timeAddedInfo.groupName} ha finalizado.`,
+        });
+      } else {
+        toast({
           title: "Tiempo Añadido",
           description: `Se han añadido ${timeAddedInfo.minutes} ${timeAddedInfo.minutes === 1 ? 'minuto' : 'minutos'} para calentamiento en ${timeAddedInfo.groupName}.`,
-      });
-      setTimeAddedInfo(null); // Reset after showing to avoid re-triggering
+        });
+      }
+      setTimeAddedInfo(null); // Reset after showing
     }
   }, [timeAddedInfo, toast]);
 
@@ -1172,7 +1176,7 @@ function ActiveTournamentPageComponent() {
         return;
     }
 
-    if (Math.floor(category.duplas.length / numGroups) < 3) {
+    if (Math.floor(category.duplas.length / numGroups) < 3 && numGroups > 1) {
         toast({
             title: "Configuración Inválida",
             description: `No se pueden crear ${numGroups} grupos. Cada grupo debe tener al menos 3 duplas. Prueba con menos grupos.`,
@@ -1215,6 +1219,15 @@ function ActiveTournamentPageComponent() {
     const placeholderDuplaW_G4 = { id: 'placeholder-G4W', nombre: '1º Grupo D', jugadores: [] as any };
     const placeholderDuplaRU_G4 = { id: 'placeholder-G4RU', nombre: '2º Grupo D', jugadores: [] as any };
 
+    const placeholderDuplaSeed1 = { id: 'placeholder-S1', nombre: 'Seed 1', jugadores: [] as any };
+    const placeholderDuplaSeed2 = { id: 'placeholder-S2', nombre: 'Seed 2', jugadores: [] as any };
+    const placeholderDuplaSeed3 = { id: 'placeholder-S3', nombre: 'Seed 3', jugadores: [] as any };
+    const placeholderDuplaSeed4 = { id: 'placeholder-S4', nombre: 'Seed 4', jugadores: [] as any };
+    const placeholderDuplaSeed5 = { id: 'placeholder-S5', nombre: 'Seed 5', jugadores: [] as any };
+    const placeholderDuplaSeed6 = { id: 'placeholder-S6', nombre: 'Seed 6', jugadores: [] as any };
+    const placeholderDuplaSeed7 = { id: 'placeholder-S7', nombre: 'Seed 7', jugadores: [] as any };
+    const placeholderDuplaSeed8 = { id: 'placeholder-S8', nombre: 'Seed 8', jugadores: [] as any };
+
     const placeholderDuplaW_QF1 = { id: 'placeholder-QF1W', nombre: 'Ganador QF1', jugadores: [] as any };
     const placeholderDuplaW_QF2 = { id: 'placeholder-QF2W', nombre: 'Ganador QF2', jugadores: [] as any };
     const placeholderDuplaW_QF3 = { id: 'placeholder-QF3W', nombre: 'Ganador QF3', jugadores: [] as any };
@@ -1230,6 +1243,22 @@ function ActiveTournamentPageComponent() {
         playoffMatchesForCategory = [
             { id: `${category.id}-SF1`, dupla1: placeholderDuplaW_G1, dupla2: placeholderDuplaRU_G2, status: 'pending', stage: 'semifinal', description: '1º Grupo A vs 2º Grupo B', court: undefined, time: undefined },
             { id: `${category.id}-SF2`, dupla1: placeholderDuplaW_G2, dupla2: placeholderDuplaRU_G1, status: 'pending', stage: 'semifinal', description: '1º Grupo B vs 2º Grupo A', court: undefined, time: undefined },
+            { id: `${category.id}-F`, dupla1: placeholderDuplaW_SF1, dupla2: placeholderDuplaW_SF2, status: 'pending', stage: 'final', description: 'Final', court: undefined, time: undefined },
+        ];
+        if (playThirdPlace) {
+            playoffMatchesForCategory.push({ id: `${category.id}-TP`, dupla1: placeholderDuplaL_SF1, dupla2: placeholderDuplaL_SF2, status: 'pending', stage: 'tercer_puesto', description: 'Tercer Puesto', court: undefined, time: undefined });
+        }
+    } else if (numGroups === 3 && groups.every(g => g.duplas.length >= 3)) { // Cuartos con 3 grupos
+        playoffMatchesForCategory = [
+            // Cuartos
+            { id: `${category.id}-QF1`, dupla1: placeholderDuplaSeed1, dupla2: placeholderDuplaSeed8, status: 'pending', stage: 'cuartos', description: 'Mejor 1º vs 2º Mejor 3º', court: undefined, time: undefined },
+            { id: `${category.id}-QF2`, dupla1: placeholderDuplaSeed4, dupla2: placeholderDuplaSeed5, status: 'pending', stage: 'cuartos', description: 'Mejor 2º vs 2º Mejor 2º', court: undefined, time: undefined },
+            { id: `${category.id}-QF3`, dupla1: placeholderDuplaSeed3, dupla2: placeholderDuplaSeed6, status: 'pending', stage: 'cuartos', description: 'Peor 1º vs Peor 2º', court: undefined, time: undefined },
+            { id: `${category.id}-QF4`, dupla1: placeholderDuplaSeed2, dupla2: placeholderDuplaSeed7, status: 'pending', stage: 'cuartos', description: '2º Mejor 1º vs Mejor 3º', court: undefined, time: undefined },
+            // Semis
+            { id: `${category.id}-SF1`, dupla1: placeholderDuplaW_QF1, dupla2: placeholderDuplaW_QF2, status: 'pending', stage: 'semifinal', description: 'Ganador QF1 vs Ganador QF2', court: undefined, time: undefined },
+            { id: `${category.id}-SF2`, dupla1: placeholderDuplaW_QF3, dupla2: placeholderDuplaW_QF4, status: 'pending', stage: 'semifinal', description: 'Ganador QF3 vs Ganador QF4', court: undefined, time: undefined },
+            // Final
             { id: `${category.id}-F`, dupla1: placeholderDuplaW_SF1, dupla2: placeholderDuplaW_SF2, status: 'pending', stage: 'final', description: 'Final', court: undefined, time: undefined },
         ];
         if (playThirdPlace) {
@@ -1660,41 +1689,97 @@ const handleConfirmPlayoffSchedule = () => {
     if (!catFixture.groups) catFixture.groups = [];
     
     // Identificar equipos clasificados
-    const qualifiedTeams: { [groupName: string]: Dupla[] } = {};
     const allDuplasMap = new Map<string, Dupla>();
-    
     catFixture.groups.forEach(group => {
         group.duplas.forEach(dupla => allDuplasMap.set(dupla.id, dupla));
-
-        const sortedStandings = [...group.standings].sort(compareStandingsNumerically);
-        
-        // Desempate cabeza a cabeza para los dos primeros
-        if (sortedStandings.length >= 2 && compareStandingsNumerically(sortedStandings[0], sortedStandings[1]) === 0) {
-            const headToHeadMatch = group.matches.find(m =>
-                m.status === 'completed' &&
-                ((m.dupla1.id === sortedStandings[0].duplaId && m.dupla2.id === sortedStandings[1].duplaId) ||
-                 (m.dupla1.id === sortedStandings[1].duplaId && m.dupla2.id === sortedStandings[0].duplaId))
-            );
-            if (headToHeadMatch?.winnerId === sortedStandings[1].duplaId) {
-                [sortedStandings[0], sortedStandings[1]] = [sortedStandings[1], sortedStandings[0]];
-            }
-        }
-        
-        qualifiedTeams[group.name] = sortedStandings
-            .slice(0, 2)
-            .map(s => allDuplasMap.get(s.duplaId)!)
-            .filter(Boolean);
     });
-    
-    const groups = catFixture.groups.map(g => g.name);
-    const getTeam = (groupLetter: string, position: number) => {
-        const groupName = `Grupo ${groupLetter}`;
-        return qualifiedTeams[groupName]?.[position - 1];
-    };
     
     const hasQuarterFinals = catFixture.playoffMatches.some(m => m.stage === 'cuartos');
 
-    if (hasQuarterFinals) {
+    if (catFixture.groups.length === 3 && hasQuarterFinals) {
+        // Logic for 3 groups qualifying 8 teams for Quarter Finals
+        // Qualifiers: Top 2 from each group (6 teams) + 2 best 3rd-place finishers
+        type TeamStanding = { team: Dupla; standing: Standing };
+
+        const firstPlaceTeams: TeamStanding[] = [];
+        const secondPlaceTeams: TeamStanding[] = [];
+        const thirdPlaceTeams: TeamStanding[] = [];
+        
+        // Collect all 1st, 2nd, and 3rd place teams with their standings
+        catFixture.groups.forEach(group => {
+            const sortedStandings = [...group.standings].sort(compareStandingsNumerically);
+
+            // Head-to-head tiebreaker for top positions
+            if (sortedStandings.length >= 2 && compareStandingsNumerically(sortedStandings[0], sortedStandings[1]) === 0) {
+                 const headToHeadMatch = group.matches.find(m => m.status === 'completed' && ((m.dupla1.id === sortedStandings[0].duplaId && m.dupla2.id === sortedStandings[1].duplaId) || (m.dupla1.id === sortedStandings[1].duplaId && m.dupla2.id === sortedStandings[0].duplaId)));
+                if (headToHeadMatch?.winnerId === sortedStandings[1].duplaId) { [sortedStandings[0], sortedStandings[1]] = [sortedStandings[1], sortedStandings[0]]; }
+            }
+             if (sortedStandings.length >= 3 && compareStandingsNumerically(sortedStandings[1], sortedStandings[2]) === 0) {
+                 const headToHeadMatch = group.matches.find(m => m.status === 'completed' && ((m.dupla1.id === sortedStandings[1].duplaId && m.dupla2.id === sortedStandings[2].duplaId) || (m.dupla1.id === sortedStandings[2].duplaId && m.dupla2.id === sortedStandings[1].duplaId)));
+                if (headToHeadMatch?.winnerId === sortedStandings[2].duplaId) { [sortedStandings[1], sortedStandings[2]] = [sortedStandings[2], sortedStandings[1]]; }
+            }
+
+            if (sortedStandings[0]) {
+                const team = allDuplasMap.get(sortedStandings[0].duplaId);
+                if (team) firstPlaceTeams.push({ team, standing: sortedStandings[0] });
+            }
+            if (sortedStandings[1]) {
+                 const team = allDuplasMap.get(sortedStandings[1].duplaId);
+                 if (team) secondPlaceTeams.push({ team, standing: sortedStandings[1] });
+            }
+            if (sortedStandings[2]) {
+                 const team = allDuplasMap.get(sortedStandings[2].duplaId);
+                 if (team) thirdPlaceTeams.push({ team, standing: sortedStandings[2] });
+            }
+        });
+        
+        // Sort teams within their ranks to determine best, 2nd best, etc.
+        const sortTeamStandings = (a: TeamStanding, b: TeamStanding) => compareStandingsNumerically(a.standing, b.standing);
+        firstPlaceTeams.sort(sortTeamStandings);
+        secondPlaceTeams.sort(sortTeamStandings);
+        thirdPlaceTeams.sort(sortTeamStandings);
+
+        // We need 3 groups, each with at least 3 teams to find the best thirds.
+        if (firstPlaceTeams.length < 3 || secondPlaceTeams.length < 3 || thirdPlaceTeams.length < 2) {
+            toast({ title: "Error de Clasificación", description: "No se pudieron determinar todos los clasificados. Se necesitan los 2 mejores de cada grupo y los 2 mejores terceros. Revisa que todos los grupos tengan al menos 3 duplas y resultados completos.", variant: "destructive" });
+            return;
+        }
+        
+        // Build the final seeded list of 8 Dupla objects
+        const seededDuplas: Dupla[] = [
+            firstPlaceTeams[0].team,  // Seed 1: Best 1st
+            firstPlaceTeams[1].team,  // Seed 2: 2nd best 1st
+            firstPlaceTeams[2].team,  // Seed 3: 3rd best 1st
+            secondPlaceTeams[0].team, // Seed 4: Best 2nd
+            secondPlaceTeams[1].team, // Seed 5: 2nd best 2nd
+            secondPlaceTeams[2].team, // Seed 6: 3rd best 2nd
+            thirdPlaceTeams[0].team,  // Seed 7: Best 3rd
+            thirdPlaceTeams[1].team,  // Seed 8: 2nd best 3rd
+        ];
+        
+        const qf1 = catFixture.playoffMatches.find(m => m.id.endsWith('-QF1'));
+        const qf2 = catFixture.playoffMatches.find(m => m.id.endsWith('-QF2'));
+        const qf3 = catFixture.playoffMatches.find(m => m.id.endsWith('-QF3'));
+        const qf4 = catFixture.playoffMatches.find(m => m.id.endsWith('-QF4'));
+
+        // Standard seeding: 1v8, 2v7, 3v6, 4v5, but bracket is usually 1v8 and 4v5 on one side, 2v7 and 3v6 on other.
+        if (qf1) { qf1.dupla1 = seededDuplas[0]; qf1.dupla2 = seededDuplas[7]; qf1.description = `${seededDuplas[0].nombre} (1º) vs ${seededDuplas[7].nombre} (8º)`; } // 1 vs 8
+        if (qf2) { qf2.dupla1 = seededDuplas[3]; qf2.dupla2 = seededDuplas[4]; qf2.description = `${seededDuplas[3].nombre} (4º) vs ${seededDuplas[4].nombre} (5º)`; } // 4 vs 5 -> Winner plays winner of 1v8 in SF1
+        if (qf3) { qf3.dupla1 = seededDuplas[2]; qf3.dupla2 = seededDuplas[5]; qf3.description = `${seededDuplas[2].nombre} (3º) vs ${seededDuplas[5].nombre} (6º)`; } // 3 vs 6
+        if (qf4) { qf4.dupla1 = seededDuplas[1]; qf4.dupla2 = seededDuplas[6]; qf4.description = `${seededDuplas[1].nombre} (2º) vs ${seededDuplas[6].nombre} (7º)`; } // 2 vs 7 -> Winner plays winner of 3v6 in SF2
+    }
+    else if (catFixture.groups.length === 4 && hasQuarterFinals) {
+        const qualifiedTeams: { [groupName: string]: Dupla[] } = {};
+        catFixture.groups.forEach(group => {
+            const sortedStandings = [...group.standings].sort(compareStandingsNumerically);
+            if (sortedStandings.length >= 2 && compareStandingsNumerically(sortedStandings[0], sortedStandings[1]) === 0) {
+                const headToHeadMatch = group.matches.find(m => m.status === 'completed' && ((m.dupla1.id === sortedStandings[0].duplaId && m.dupla2.id === sortedStandings[1].duplaId) || (m.dupla1.id === sortedStandings[1].duplaId && m.dupla2.id === sortedStandings[0].duplaId)));
+                if (headToHeadMatch?.winnerId === sortedStandings[1].duplaId) { [sortedStandings[0], sortedStandings[1]] = [sortedStandings[1], sortedStandings[0]]; }
+            }
+            qualifiedTeams[group.name] = sortedStandings.slice(0, 2).map(s => allDuplasMap.get(s.duplaId)!).filter(Boolean);
+        });
+        const getTeam = (groupLetter: string, position: number) => qualifiedTeams[`Grupo ${groupLetter}`]?.[position - 1];
+        
         const qf1 = catFixture.playoffMatches.find(m => m.id.endsWith('-QF1'));
         const qf2 = catFixture.playoffMatches.find(m => m.id.endsWith('-QF2'));
         const qf3 = catFixture.playoffMatches.find(m => m.id.endsWith('-QF3'));
@@ -1714,8 +1799,18 @@ const handleConfirmPlayoffSchedule = () => {
         if (qf2) { qf2.dupla1 = teamW_GC; qf2.dupla2 = teamRU_GB; }
         if (qf3) { qf3.dupla1 = teamW_GB; qf3.dupla2 = teamRU_GC; }
         if (qf4) { qf4.dupla1 = teamW_GD; qf4.dupla2 = teamRU_GA; }
-
     } else { // Semifinals logic
+        const qualifiedTeams: { [groupName: string]: Dupla[] } = {};
+        catFixture.groups.forEach(group => {
+            const sortedStandings = [...group.standings].sort(compareStandingsNumerically);
+            if (sortedStandings.length >= 2 && compareStandingsNumerically(sortedStandings[0], sortedStandings[1]) === 0) {
+                const headToHeadMatch = group.matches.find(m => m.status === 'completed' && ((m.dupla1.id === sortedStandings[0].duplaId && m.dupla2.id === sortedStandings[1].duplaId) || (m.dupla1.id === sortedStandings[1].duplaId && m.dupla2.id === sortedStandings[0].duplaId)));
+                if (headToHeadMatch?.winnerId === sortedStandings[1].duplaId) { [sortedStandings[0], sortedStandings[1]] = [sortedStandings[1], sortedStandings[0]]; }
+            }
+            qualifiedTeams[group.name] = sortedStandings.slice(0, 2).map(s => allDuplasMap.get(s.duplaId)!).filter(Boolean);
+        });
+        const getTeam = (groupLetter: string, position: number) => qualifiedTeams[`Grupo ${groupLetter}`]?.[position - 1];
+
         const sf1 = catFixture.playoffMatches.find(m => m.id.endsWith('-SF1'));
         const sf2 = catFixture.playoffMatches.find(m => m.id.endsWith('-SF2'));
         const teamW_GA = getTeam('A', 1); const teamRU_GA = getTeam('A', 2);
@@ -2126,36 +2221,7 @@ const handleConfirmPlayoffSchedule = () => {
                               : 0
                           }
                           className="h-2 w-24 mt-1"
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        {(!timer || !timer.isActive) ? (
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => handleTimerControl(timerInfo.groupId, 'start')}
-                            aria-label="Iniciar"
-                          >
-                            <Play className="h-5 w-5" />
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => handleTimerControl(timerInfo.groupId, 'pause')}
-                            aria-label="Pausar"
-                          >
-                            <Pause className="h-5 w-5" />
-                          </Button>
-                        )}
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => handleTimerControl(timerInfo.groupId, 'reset')}
-                          aria-label="Reiniciar"
-                        >
-                          <RotateCcw className="h-5 w-5" />
-                        </Button>
+                        </div>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
@@ -2303,7 +2369,7 @@ const handleConfirmPlayoffSchedule = () => {
                                     </SelectTrigger>
                                     <SelectContent>
                                         {Array.from({ length: Math.floor(categoria.duplas.length / 3) }, (_, i) => i + 1)
-                                            .filter(num => num <= 4) // Limit to 4 groups for now
+                                            .filter(num => [1, 2, 3, 4].includes(num)) // Allow 1, 2, 3, or 4 groups
                                             .map(num => (
                                                 <SelectItem key={num} value={num.toString()}>{num} {num > 1 ? 'grupos' : 'grupo'}</SelectItem>
                                         ))}
@@ -2323,6 +2389,11 @@ const handleConfirmPlayoffSchedule = () => {
                             {parseInt(groupConfiguration[categoria.id].numGroups, 10) === 2 && (
                               <p className="font-semibold text-primary/80">
                                   ¡Perfecto! Al crear 2 grupos se generará una fase de Playoffs (Semifinales y Final).
+                              </p>
+                            )}
+                             {parseInt(groupConfiguration[categoria.id].numGroups, 10) === 3 && (
+                              <p className="font-semibold text-primary/80">
+                                  ¡Interesante! Con 3 grupos se generará una fase de Playoffs (Cuartos, Semis y Final) con los 2 mejores de cada grupo y los 2 mejores terceros.
                               </p>
                             )}
                             {parseInt(groupConfiguration[categoria.id].numGroups, 10) === 4 && (
@@ -2572,7 +2643,7 @@ const handleConfirmPlayoffSchedule = () => {
                                                   {/* QUARTERFINALS COLUMN */}
                                                   {quarterfinals.length > 0 && (
                                                     <>
-                                                      <div className="flex flex-col md:flex-row lg:flex-col items-center justify-around lg:space-y-12 space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
+                                                      <div className="flex flex-col md:flex-row lg:flex-col items-center justify-around lg:justify-between lg:h-[42rem] lg:space-y-12 space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
                                                           <PlayoffMatchBox match={qf1 ? { ...qf1, categoryId: catFixture.categoryId } : undefined} title="Cuartos de Final" onEditClick={() => { if(qf1) { setCurrentEditingMatch({ ...qf1, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}} />
                                                           <PlayoffMatchBox match={qf2 ? { ...qf2, categoryId: catFixture.categoryId } : undefined} title="Cuartos de Final" onEditClick={() => { if(qf2) { setCurrentEditingMatch({ ...qf2, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}} />
                                                           <PlayoffMatchBox match={qf3 ? { ...qf3, categoryId: catFixture.categoryId } : undefined} title="Cuartos de Final" onEditClick={() => { if(qf3) { setCurrentEditingMatch({ ...qf3, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}} />
@@ -2583,7 +2654,7 @@ const handleConfirmPlayoffSchedule = () => {
                                                   )}
 
                                                   {/* SEMIFINALS COLUMN */}
-                                                  <div className="flex flex-col md:flex-row lg:flex-col items-center justify-around lg:space-y-48 space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
+                                                  <div className="flex flex-col md:flex-row lg:flex-col items-center lg:justify-around lg:h-[36rem] lg:space-y-48 space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
                                                     <PlayoffMatchBox match={sf1 ? { ...sf1, categoryId: catFixture.categoryId } : undefined} title="Semifinal 1" onEditClick={() => { if(sf1) { setCurrentEditingMatch({ ...sf1, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
                                                     <PlayoffMatchBox match={sf2 ? { ...sf2, categoryId: catFixture.categoryId } : undefined} title="Semifinal 2" onEditClick={() => { if(sf2) { setCurrentEditingMatch({ ...sf2, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
                                                   </div>
@@ -2761,3 +2832,5 @@ export default function ActiveTournamentPage() {
     </Suspense>
   );
 }
+
+    
