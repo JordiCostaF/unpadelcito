@@ -62,7 +62,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import type { TorneoActivoData, CategoriaConDuplas as CategoriaConDuplasFromActive } from '../active-tournament/page';
+import type { TorneoActivoData, CategoriaConDuplas } from '@/lib/tournament-types';
 
 
 const categoryOptions = {
@@ -96,9 +96,9 @@ const tournamentFormSchema = z.object({
   players: z.array(playerSchema),
 });
 
-export type TournamentFormValues = z.infer<typeof tournamentFormSchema>;
-export type PlayerFormValues = z.infer<typeof playerSchema>;
-export type CategoryFormValues = z.infer<typeof categorySchema>;
+type TournamentFormValues = z.infer<typeof tournamentFormSchema>;
+type PlayerFormValues = z.infer<typeof playerSchema>;
+type CategoryFormValues = z.infer<typeof categorySchema>;
 
 // Helper function to shuffle an array
 function shuffleArray<T>(array: T[]): T[] {
@@ -231,7 +231,7 @@ export default function RandomTournamentPage() {
        return;
    }
 
-    const categoriesWithDuplasOutput: CategoriaConDuplasFromActive[] = categories.map(category => {
+    const categoriesWithDuplasOutput: CategoriaConDuplas[] = categories.map(category => {
       const playersInCategory = players.filter(p => p.categoryId === category.id);
       
       let drives = shuffleArray(playersInCategory.filter(p => p.position === 'drive'));

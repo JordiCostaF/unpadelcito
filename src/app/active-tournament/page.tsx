@@ -8,7 +8,6 @@ import React, { useEffect, useState, useCallback, Suspense, useRef } from "react
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import type { PlayerFormValues as PlayerFormValuesFromRandom, CategoryFormValues as CategoryFormValuesFromRandom } from "../random-tournament/page";
 import { format, parse, addMinutes, setHours, setMinutes, isValid } from "date-fns";
 import { es } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
@@ -52,91 +51,8 @@ import { Switch } from "@/components/ui/switch";
 import html2canvas from "html2canvas";
 import { ShareableFixture } from "@/components/ShareableFixture";
 import { ShareablePlayoffs } from "@/components/ShareablePlayoffs";
+import type { PlayerFormValues, CategoryFormValues, Dupla, CategoriaConDuplas, TorneoActivoData, Standing, Match, Group, PlayoffMatch, CategoryFixture, FixtureData } from '@/lib/tournament-types';
 
-
-// Renaming imported types to avoid conflicts if this page also defines its own PlayerFormValues
-export type PlayerFormValues = PlayerFormValuesFromRandom;
-export type CategoryFormValues = CategoryFormValuesFromRandom;
-
-
-export interface Dupla {
-  id: string;
-  jugadores: [PlayerFormValues, PlayerFormValues]; 
-  nombre: string; 
-}
-
-export interface CategoriaConDuplas extends CategoryFormValues {
-  duplas: Dupla[];
-  jugadoresSobrantes: PlayerFormValues[];
-  numTotalJugadores: number;
-}
-
-export interface TorneoActivoData {
-  tournamentName: string;
-  date: string; 
-  time: string;
-  place: string;
-  categoriesWithDuplas: CategoriaConDuplas[];
-  numCourts?: number;
-  matchDuration?: number;
-  playThirdPlace?: boolean;
-  isAmericanoMode?: boolean;
-}
-
-export interface Standing {
-  duplaId: string;
-  duplaName: string;
-  pj: number; 
-  pg: number; 
-  pp: number; 
-  pf: number; 
-  pc: number; 
-  pts: number; 
-}
-
-export interface Match {
-  id: string;
-  round?: number;
-  description?: string;
-  dependsOn?: string[];
-  dupla1: Dupla;
-  dupla2: Dupla;
-  score1?: number;
-  score2?: number;
-  court?: number | string;
-  time?: string;
-  status: 'pending' | 'completed' | 'live';
-  winnerId?: string;
-  loserId?: string;
-  groupOriginId?: string; 
-}
-
-export interface Group {
-  id: string;
-  name: string; 
-  duplas: Dupla[];
-  standings: Standing[];
-  matches: Match[];
-  groupAssignedCourt?: string | number;
-  groupStartTime?: string;
-  groupMatchDuration?: number;
-}
-
-export interface PlayoffMatch extends Match {
-  stage: 'cuartos' | 'semifinal' | 'final' | 'tercer_puesto';
-  description: string; 
-}
-
-export interface CategoryFixture {
-  categoryId: string;
-  categoryName: string;
-  groups: Group[];
-  playoffMatches?: PlayoffMatch[];
-}
-
-export interface FixtureData {
-  [categoryId: string]: CategoryFixture;
-}
 
 const resultFormSchema = z.object({
   score1: z.string().min(1, "Puntaje requerido").regex(/^\d+$/, "Debe ser un número"),
@@ -1971,7 +1887,7 @@ const handleConfirmPlayoffSchedule = () => {
         if (qf2) { qf2.dupla1 = teamW_GC; qf2.dupla2 = teamRU_GB; }
         if (qf3) { qf3.dupla1 = teamW_GB; qf3.dupla2 = teamRU_GC; }
         if (qf4) { qf4.dupla1 = teamW_GD; qf4.dupla2 = teamRU_GA; }
-    } else { // Semifinals logic
+    } else { // Semifinales logic
         const qualifiedTeams: { [groupName: string]: Dupla[] } = {};
         catFixture.groups.forEach(group => {
             const sortedStandings = [...group.standings].sort(compareStandingsNumerically);

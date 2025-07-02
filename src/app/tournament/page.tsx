@@ -62,7 +62,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import type { TorneoActivoData, CategoriaConDuplas as CategoriaConDuplasFromActive, PlayerFormValues as PlayerFormValuesFromActiveTournament } from '../active-tournament/page';
+import type { TorneoActivoData, CategoriaConDuplas, PlayerFormValues } from '@/lib/tournament-types';
 
 
 const categoryOptions = {
@@ -99,10 +99,10 @@ const tournamentFormSchema = z.object({
   duplas: z.array(duplaSchema),
 });
 
-export type TournamentFormValues = z.infer<typeof tournamentFormSchema>;
-export type DuplaFormValues = z.infer<typeof duplaSchema>;
-export type CategoryFormValues = z.infer<typeof categorySchema>;
-export type IndividualPlayerInDuplaValues = z.infer<typeof individualPlayerInDuplaSchema>;
+type TournamentFormValues = z.infer<typeof tournamentFormSchema>;
+type DuplaFormValues = z.infer<typeof duplaSchema>;
+type CategoryFormValues = z.infer<typeof categorySchema>;
+type IndividualPlayerInDuplaValues = z.infer<typeof individualPlayerInDuplaSchema>;
 
 
 const generateDuplaIdForActiveTournament = (p1Name?: string, p2Name?: string, p1Rut?: string, p2Rut?: string): string => {
@@ -224,18 +224,18 @@ export default function TournamentPage() {
         });
     }
 
-    const categoriesWithDuplasOutput: CategoriaConDuplasFromActive[] = categories.map(category => {
+    const categoriesWithDuplasOutput: CategoriaConDuplas[] = categories.map(category => {
       const duplasDeCategoria = duplas
         .filter(d => d.categoryId === category.id)
         .map(d => {
-          const p1Active: PlayerFormValuesFromActiveTournament = {
+          const p1Active: PlayerFormValues = {
             id: crypto.randomUUID(),
             name: d.player1.name,
             rut: d.player1.rut || `TEMP-${d.player1.name.replace(/\s+/g, '')}-${Math.random().toString(36).substring(2,5)}`,
             position: "ambos", 
             categoryId: category.id,
           };
-          const p2Active: PlayerFormValuesFromActiveTournament = {
+          const p2Active: PlayerFormValues = {
             id: crypto.randomUUID(),
             name: d.player2.name,
             rut: d.player2.rut || `TEMP-${d.player2.name.replace(/\s+/g, '')}-${Math.random().toString(36).substring(2,5)}`,
@@ -244,7 +244,7 @@ export default function TournamentPage() {
           };
           return {
             id: generateDuplaIdForActiveTournament(p1Active.name, p2Active.name, p1Active.rut, p2Active.rut),
-            jugadores: [p1Active, p2Active] as [PlayerFormValuesFromActiveTournament, PlayerFormValuesFromActiveTournament],
+            jugadores: [p1Active, p2Active] as [PlayerFormValues, PlayerFormValues],
             nombre: `${d.player1.name} / ${d.player2.name}`
           };
         });
