@@ -2635,53 +2635,52 @@ const handleConfirmPlayoffSchedule = () => {
                                                     : "Completa todos los partidos de grupo y registra sus resultados para poder programar los playoffs."
                                                 }
                                             </p>
+                                            
+                                            <div className="flex flex-col lg:flex-row items-center lg:items-start justify-center space-y-12 lg:space-y-0 lg:space-x-8">
 
-                                            <div className="flex flex-col items-center justify-center space-y-12 lg:space-y-0">
-                                                {/* Main Bracket */}
-                                                <div className="flex flex-col lg:flex-row items-center justify-center w-full lg:space-x-8 space-y-8 lg:space-y-0">
-                                                  
-                                                  {/* QUARTERFINALS COLUMN */}
-                                                  {quarterfinals.length > 0 && (
-                                                    <>
-                                                      <div className="flex flex-col md:flex-row lg:flex-col items-center justify-around lg:justify-between lg:h-[42rem] lg:space-y-12 space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
-                                                          <PlayoffMatchBox match={qf1 ? { ...qf1, categoryId: catFixture.categoryId } : undefined} title="Cuartos de Final" onEditClick={() => { if(qf1) { setCurrentEditingMatch({ ...qf1, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}} />
-                                                          <PlayoffMatchBox match={qf2 ? { ...qf2, categoryId: catFixture.categoryId } : undefined} title="Cuartos de Final" onEditClick={() => { if(qf2) { setCurrentEditingMatch({ ...qf2, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}} />
-                                                          <PlayoffMatchBox match={qf3 ? { ...qf3, categoryId: catFixture.categoryId } : undefined} title="Cuartos de Final" onEditClick={() => { if(qf3) { setCurrentEditingMatch({ ...qf3, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}} />
-                                                          <PlayoffMatchBox match={qf4 ? { ...qf4, categoryId: catFixture.categoryId } : undefined} title="Cuartos de Final" onEditClick={() => { if(qf4) { setCurrentEditingMatch({ ...qf4, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}} />
-                                                      </div>
-                                                      <div className="h-full hidden lg:flex items-center"><ChevronRight className="h-12 w-12 text-primary/50" /></div>
-                                                    </>
+                                              {/* QUARTERFINALS COLUMN */}
+                                              {quarterfinals.length > 0 && (
+                                                <>
+                                                  <div className="flex flex-col md:flex-row lg:flex-col items-center justify-between lg:h-[42rem] lg:space-y-12 space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
+                                                      <PlayoffMatchBox match={qf1 ? { ...qf1, categoryId: catFixture.categoryId } : undefined} title="Cuartos de Final" onEditClick={() => { if(qf1) { setCurrentEditingMatch({ ...qf1, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}} />
+                                                      <PlayoffMatchBox match={qf2 ? { ...qf2, categoryId: catFixture.categoryId } : undefined} title="Cuartos de Final" onEditClick={() => { if(qf2) { setCurrentEditingMatch({ ...qf2, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}} />
+                                                      <PlayoffMatchBox match={qf3 ? { ...qf3, categoryId: catFixture.categoryId } : undefined} title="Cuartos de Final" onEditClick={() => { if(qf3) { setCurrentEditingMatch({ ...qf3, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}} />
+                                                      <PlayoffMatchBox match={qf4 ? { ...qf4, categoryId: catFixture.categoryId } : undefined} title="Cuartos de Final" onEditClick={() => { if(qf4) { setCurrentEditingMatch({ ...qf4, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}} />
+                                                  </div>
+                                                  <div className="h-full hidden lg:flex items-center"><ChevronRight className="h-12 w-12 text-primary/50" /></div>
+                                                </>
+                                              )}
+
+                                              {/* SEMIFINALS COLUMN */}
+                                              <div className="flex flex-col md:flex-row lg:flex-col items-center lg:justify-between lg:h-[36rem] lg:space-y-48 space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
+                                                <PlayoffMatchBox match={sf1 ? { ...sf1, categoryId: catFixture.categoryId } : undefined} title="Semifinal 1" onEditClick={() => { if(sf1) { setCurrentEditingMatch({ ...sf1, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
+                                                <PlayoffMatchBox match={sf2 ? { ...sf2, categoryId: catFixture.categoryId } : undefined} title="Semifinal 2" onEditClick={() => { if(sf2) { setCurrentEditingMatch({ ...sf2, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
+                                              </div>
+                                              
+                                              <div className="h-full hidden lg:flex items-center"><ChevronRight className="h-12 w-12 text-primary/50" /></div>
+                                              
+                                              {/* FINALS AREA */}
+                                              <div className="flex flex-col items-center space-y-8">
+                                                  <PlayoffMatchBox match={final ? { ...final, categoryId: catFixture.categoryId } : undefined} title="Final" winner={!!champion} onEditClick={() => { if(final) { setCurrentEditingMatch({ ...final, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
+                                              
+                                                  {champion && (
+                                                    <div className="text-center py-4 border-t-2 border-b-2 border-dashed border-primary/50 w-full max-w-md mt-4">
+                                                      <h3 className="text-2xl font-bold uppercase tracking-widest text-primary">CAMPEÓN</h3>
+                                                      <p className="text-4xl font-bold flex items-center justify-center mt-2">
+                                                        <TrophyIcon className="h-10 w-10 mr-4 text-primary" />
+                                                        {champion}
+                                                        <TrophyIcon className="h-10 w-10 ml-4 text-primary" />
+                                                      </p>
+                                                    </div>
                                                   )}
 
-                                                  {/* SEMIFINALS COLUMN */}
-                                                  <div className="flex flex-col md:flex-row lg:flex-col items-center lg:justify-between lg:h-[36rem] lg:space-y-48 space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
-                                                    <PlayoffMatchBox match={sf1 ? { ...sf1, categoryId: catFixture.categoryId } : undefined} title="Semifinal 1" onEditClick={() => { if(sf1) { setCurrentEditingMatch({ ...sf1, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
-                                                    <PlayoffMatchBox match={sf2 ? { ...sf2, categoryId: catFixture.categoryId } : undefined} title="Semifinal 2" onEditClick={() => { if(sf2) { setCurrentEditingMatch({ ...sf2, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
-                                                  </div>
-                                                  
-                                                  <div className="h-full hidden lg:flex items-center"><ChevronRight className="h-12 w-12 text-primary/50" /></div>
-                                                  
-                                                  {/* FINAL COLUMN */}
-                                                  <PlayoffMatchBox match={final ? { ...final, categoryId: catFixture.categoryId } : undefined} title="Final" winner={!!champion} onEditClick={() => { if(final) { setCurrentEditingMatch({ ...final, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
-                                                </div>
-                                                
-                                                {champion && (
-                                                  <div className="text-center py-4 border-t-2 border-b-2 border-dashed border-primary/50 w-full max-w-md mt-12">
-                                                    <h3 className="text-2xl font-bold uppercase tracking-widest text-primary">CAMPEÓN</h3>
-                                                    <p className="text-4xl font-bold flex items-center justify-center mt-2">
-                                                      <TrophyIcon className="h-10 w-10 mr-4 text-primary" />
-                                                      {champion}
-                                                      <TrophyIcon className="h-10 w-10 ml-4 text-primary" />
-                                                    </p>
-                                                  </div>
-                                                )}
-
-                                                {/* Third Place Match */}
-                                                {thirdPlace && (
-                                                  <div className="pt-8 mt-8 border-t-2 border-dashed border-primary/50 w-full flex justify-center">
-                                                    <PlayoffMatchBox match={thirdPlace ? { ...thirdPlace, categoryId: catFixture.categoryId } : undefined} title="Tercer Puesto" onEditClick={() => { if(thirdPlace) { setCurrentEditingMatch({ ...thirdPlace, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
-                                                  </div>
-                                                )}
+                                                  {/* Third Place Match */}
+                                                  {thirdPlace && (
+                                                    <div className="pt-8 mt-8 border-t-2 border-dashed border-primary/50 w-full flex justify-center">
+                                                      <PlayoffMatchBox match={thirdPlace ? { ...thirdPlace, categoryId: catFixture.categoryId } : undefined} title="Tercer Puesto" onEditClick={() => { if(thirdPlace) { setCurrentEditingMatch({ ...thirdPlace, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
+                                                    </div>
+                                                  )}
+                                              </div>
                                             </div>
                                         </div>
                                     ) : (
