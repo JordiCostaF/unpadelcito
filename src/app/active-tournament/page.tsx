@@ -2258,7 +2258,7 @@ const handleConfirmPlayoffSchedule = () => {
                       <p className="text-sm font-medium">{`${timerInfo.categoryName} - ${timerInfo.groupName}`}</p>
                     </div>
                     <div className="flex items-center gap-4">
-                      <div className="text-center">
+                      <div className="flex flex-col items-center gap-2 text-center">
                         <div className="font-mono text-3xl font-bold text-primary">
                           {formatTime(timer.timeRemaining ?? 0)}
                         </div>
@@ -2268,36 +2268,57 @@ const handleConfirmPlayoffSchedule = () => {
                               ? ((timer.initialDuration - timer.timeRemaining) / timer.initialDuration) * 100
                               : 0
                           }
-                          className="h-2 w-24 mt-1"
+                          className="h-2 w-24"
                         />
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              aria-label="Añadir tiempo para calentamiento"
-                              title="Añadir tiempo para calentamiento"
-                            >
-                              <PlusCircle className="h-5 w-5" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {[1, 2, 3, 4, 5].map((min) => (
-                              <DropdownMenuItem
-                                key={min}
-                                onClick={() =>
-                                  handleTimerControl(
-                                    timerInfo.groupId,
-                                    "addTime",
-                                    min
-                                  )
-                                }
+                        <div className="flex items-center gap-2 mt-2">
+                          <Button
+                            variant={timer.isActive ? "destructive" : "secondary"}
+                            size="icon"
+                            className="h-9 w-9"
+                            onClick={() => handleTimerControl(timerInfo.groupId, timer.isActive ? 'pause' : 'start')}
+                            title={timer.isActive ? 'Pausar' : 'Iniciar'}
+                          >
+                            {timer.isActive ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-9 w-9"
+                            onClick={() => handleTimerControl(timerInfo.groupId, 'reset')}
+                            title="Reiniciar"
+                          >
+                            <RotateCcw className="h-5 w-5" />
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-9 w-9"
+                                aria-label="Añadir tiempo para calentamiento"
+                                title="Añadir tiempo para calentamiento"
                               >
-                                Añadir {min} {min === 1 ? 'minuto' : 'minutos'}
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                                <PlusCircle className="h-5 w-5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {[1, 2, 3, 4, 5].map((min) => (
+                                <DropdownMenuItem
+                                  key={min}
+                                  onClick={() =>
+                                    handleTimerControl(
+                                      timerInfo.groupId,
+                                      "addTime",
+                                      min
+                                    )
+                                  }
+                                >
+                                  Añadir {min} {min === 1 ? 'minuto' : 'minutos'}
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </div>
                     </div>
                   </div>
