@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power, Save, PlayCircle, Edit, ChevronLeft, ChevronRight, AlertTriangle, Share2, Play, Pause, RotateCcw, ArrowUp, ArrowDown, PlusCircle } from "lucide-react";
+import { Activity, Users, Swords, UserX, Info, Calendar as CalendarIconLucide, Clock, MapPinIcon, Home, ListChecks, Settings, ShieldQuestion, Trophy as TrophyIcon, Edit3, Trash2, Power, Save, PlayCircle, Edit, ChevronLeft, ChevronRight, AlertTriangle, Share2, Play, Pause, RotateCcw, ArrowUp, ArrowDown, PlusCircle, Repeat } from "lucide-react";
 import React, { useEffect, useState, useCallback, Suspense, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -80,6 +80,7 @@ export interface TorneoActivoData {
   numCourts?: number;
   matchDuration?: number;
   playThirdPlace?: boolean;
+  isAmericanoMode?: boolean;
 }
 
 export interface Standing {
@@ -554,6 +555,7 @@ function ActiveTournamentPageComponent() {
   const [numCourtsGlobal, setNumCourtsGlobal] = useState<number | undefined>(2);
   const [matchDurationGlobal, setMatchDurationGlobal] = useState<number | undefined>(60);
   const [playThirdPlace, setPlayThirdPlace] = useState<boolean>(true);
+  const [isAmericanoMode, setIsAmericanoMode] = useState<boolean>(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const { toast } = useToast();
   
@@ -1013,6 +1015,7 @@ function ActiveTournamentPageComponent() {
         setNumCourtsGlobal(parsedTorneo.numCourts || 2);
         setMatchDurationGlobal(parsedTorneo.matchDuration || 60);
         setPlayThirdPlace(parsedTorneo.playThirdPlace ?? true);
+        setIsAmericanoMode(parsedTorneo.isAmericanoMode ?? false);
         
         const storedFixture = sessionStorage.getItem(`fixture_${parsedTorneo.tournamentName}`);
         if (storedFixture) {
@@ -1104,7 +1107,7 @@ function ActiveTournamentPageComponent() {
   };
 
 
- const handleGlobalTournamentSettingChange = (type: 'courts' | 'thirdPlace', value: string | boolean) => {
+ const handleGlobalTournamentSettingChange = (type: 'courts' | 'thirdPlace' | 'mode', value: string | boolean) => {
     if (!torneo) return;
     
     let updatedTorneoData = { ...torneo };
@@ -1126,6 +1129,14 @@ function ActiveTournamentPageComponent() {
             updatedTorneoData.playThirdPlace = checked;
             settingChanged = true;
             toastDescription = checked ? "Se jugará partido por el tercer puesto." : "No se jugará partido por el tercer puesto.";
+        }
+    } else if (type === 'mode') {
+        const checked = value as boolean;
+        if (isAmericanoMode !== checked) {
+            setIsAmericanoMode(checked);
+            updatedTorneoData.isAmericanoMode = checked;
+            settingChanged = true;
+            toastDescription = checked ? "Modo del torneo cambiado a Americano." : "Modo del torneo cambiado a Torneo.";
         }
     }
     
@@ -2155,7 +2166,7 @@ const handleConfirmPlayoffSchedule = () => {
               </SelectContent>
             </Select>
           </div>
-           <div className="flex items-center space-x-2 col-span-full sm:col-span-1">
+           <div className="flex items-center space-x-2">
             <ShieldQuestion className="h-5 w-5 text-primary" />
             <Label htmlFor="play-third-place" className="flex-grow">Jugar Tercer Puesto</Label>
             <Switch
@@ -2165,10 +2176,22 @@ const handleConfirmPlayoffSchedule = () => {
               disabled={fixture && Object.keys(fixture).length > 0}
             />
           </div>
+          <div className="flex items-center space-x-2">
+            <Repeat className="h-5 w-5 text-primary" />
+            <Label htmlFor="tournament-mode" className="flex-grow">
+              Modo Americano
+            </Label>
+            <Switch
+              id="tournament-mode"
+              checked={isAmericanoMode}
+              onCheckedChange={(checked) => handleGlobalTournamentSettingChange('mode', checked)}
+              disabled={fixture && Object.keys(fixture).length > 0}
+            />
+          </div>
           {fixture && Object.keys(fixture).length > 0 && 
-            <div className="col-span-full sm:col-span-1">
+            <div className="col-span-full">
               <p className="text-xs text-muted-foreground">
-                No se puede cambiar una vez generado el fixture.
+                Ajustes como modo de torneo o tercer puesto no se pueden cambiar una vez generado el fixture.
               </p>
             </div>
           }
@@ -2641,7 +2664,7 @@ const handleConfirmPlayoffSchedule = () => {
                                               {/* QUARTERFINALS COLUMN */}
                                               {quarterfinals.length > 0 && (
                                                 <>
-                                                  <div className="flex flex-col md:flex-row lg:flex-col items-center justify-between lg:h-[42rem] lg:space-y-12 space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
+                                                  <div className="flex flex-col md:flex-row lg:flex-col items-center justify-around lg:h-[42rem] space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
                                                       <PlayoffMatchBox match={qf1 ? { ...qf1, categoryId: catFixture.categoryId } : undefined} title="Cuartos de Final" onEditClick={() => { if(qf1) { setCurrentEditingMatch({ ...qf1, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}} />
                                                       <PlayoffMatchBox match={qf2 ? { ...qf2, categoryId: catFixture.categoryId } : undefined} title="Cuartos de Final" onEditClick={() => { if(qf2) { setCurrentEditingMatch({ ...qf2, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}} />
                                                       <PlayoffMatchBox match={qf3 ? { ...qf3, categoryId: catFixture.categoryId } : undefined} title="Cuartos de Final" onEditClick={() => { if(qf3) { setCurrentEditingMatch({ ...qf3, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}} />
@@ -2652,7 +2675,7 @@ const handleConfirmPlayoffSchedule = () => {
                                               )}
 
                                               {/* SEMIFINALS COLUMN */}
-                                              <div className="flex flex-col md:flex-row lg:flex-col items-center lg:justify-between lg:h-[36rem] lg:space-y-48 space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
+                                              <div className="flex flex-col md:flex-row lg:flex-col items-center lg:justify-between lg:h-[36rem] space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
                                                 <PlayoffMatchBox match={sf1 ? { ...sf1, categoryId: catFixture.categoryId } : undefined} title="Semifinal 1" onEditClick={() => { if(sf1) { setCurrentEditingMatch({ ...sf1, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
                                                 <PlayoffMatchBox match={sf2 ? { ...sf2, categoryId: catFixture.categoryId } : undefined} title="Semifinal 2" onEditClick={() => { if(sf2) { setCurrentEditingMatch({ ...sf2, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
                                               </div>
