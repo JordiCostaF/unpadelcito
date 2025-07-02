@@ -2422,50 +2422,8 @@ const handleConfirmPlayoffSchedule = () => {
                 </div>
               </AccordionTrigger>
               <AccordionContent className="p-4 bg-card rounded-b-md">
-                {categoria.numTotalJugadores === 0 ? (
-                      <p className="text-muted-foreground text-center py-3">No hay jugadores inscritos en esta categoría.</p>
-                ): categoria.duplas.length > 0 ? (
-                  <ul className="space-y-4">
-                    {categoria.duplas.map((dupla, index) => (
-                      <li key={dupla.id || index} className="p-3 md:p-4 border rounded-lg shadow-sm bg-background">
-                        <div className="flex items-center justify-between mb-2">
-                            <h4 className="font-semibold text-primary flex items-center text-md md:text-lg">
-                                <Swords className="mr-2 h-5 w-5" /> Dupla {index + 1}: {dupla.nombre}
-                            </h4>
-                            <Button variant="ghost" size="icon" onClick={() => handleOpenEditDuplaModal(dupla, categoria.id)}>
-                              <Edit className="h-4 w-4 text-blue-500" />
-                            </Button>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                          <div>
-                            <span className="font-medium">Jugador 1:</span> {dupla.jugadores[0].name} 
-                            <span className="text-muted-foreground text-xs capitalize"> ({dupla.jugadores[0].position})</span>
-                          </div>
-                          <div>
-                            <span className="font-medium">Jugador 2:</span> {dupla.jugadores[1].name}
-                            <span className="text-muted-foreground text-xs capitalize"> ({dupla.jugadores[1].position})</span>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-muted-foreground text-center py-3">No se pudieron formar duplas para esta categoría.</p>
-                )}
-                {categoria.jugadoresSobrantes.length > 0 && (
-                  <div className="mt-6 pt-4 border-t">
-                    <h4 className="font-semibold text-destructive flex items-center mb-2 text-md md:text-lg">
-                      <UserX className="mr-2 h-5 w-5" /> Jugadores Sin Dupla ({categoria.jugadoresSobrantes.length})
-                    </h4>
-                    <ul className="space-y-2 text-sm list-disc list-inside pl-5">
-                      {categoria.jugadoresSobrantes.map(jugador => (
-                        <li key={jugador.id}>{jugador.name} <span className="text-muted-foreground">({jugador.rut})</span> - <span className="capitalize">{jugador.position}</span></li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
                 {(!fixture || !fixture[categoria.id]) && categoria.duplas.length >= 3 && (
-                    <div className="mt-6 pt-4 border-t">
+                    <div className="mb-6 pb-4 border-b">
                         <h4 className="font-semibold text-primary mb-2">Generar Grupos</h4>
                         <div className="flex flex-col sm:flex-row items-end gap-4">
                             <div className="flex-grow w-full sm:w-auto">
@@ -2515,7 +2473,48 @@ const handleConfirmPlayoffSchedule = () => {
                         )}
                     </div>
                 )}
-
+                {categoria.numTotalJugadores === 0 ? (
+                      <p className="text-muted-foreground text-center py-3">No hay jugadores inscritos en esta categoría.</p>
+                ): categoria.duplas.length > 0 ? (
+                  <ul className="space-y-4">
+                    {categoria.duplas.map((dupla, index) => (
+                      <li key={dupla.id || index} className="p-3 md:p-4 border rounded-lg shadow-sm bg-background">
+                        <div className="flex items-center justify-between mb-2">
+                            <h4 className="font-semibold text-primary flex items-center text-md md:text-lg">
+                                <Swords className="mr-2 h-5 w-5" /> Dupla {index + 1}: {dupla.nombre}
+                            </h4>
+                            <Button variant="ghost" size="icon" onClick={() => handleOpenEditDuplaModal(dupla, categoria.id)}>
+                              <Edit className="h-4 w-4 text-blue-500" />
+                            </Button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                          <div>
+                            <span className="font-medium">Jugador 1:</span> {dupla.jugadores[0].name} 
+                            <span className="text-muted-foreground text-xs capitalize"> ({dupla.jugadores[0].position})</span>
+                          </div>
+                          <div>
+                            <span className="font-medium">Jugador 2:</span> {dupla.jugadores[1].name}
+                            <span className="text-muted-foreground text-xs capitalize"> ({dupla.jugadores[1].position})</span>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-muted-foreground text-center py-3">No se pudieron formar duplas para esta categoría.</p>
+                )}
+                {categoria.jugadoresSobrantes.length > 0 && (
+                  <div className="mt-6 pt-4 border-t">
+                    <h4 className="font-semibold text-destructive flex items-center mb-2 text-md md:text-lg">
+                      <UserX className="mr-2 h-5 w-5" /> Jugadores Sin Dupla ({categoria.jugadoresSobrantes.length})
+                    </h4>
+                    <ul className="space-y-2 text-sm list-disc list-inside pl-5">
+                      {categoria.jugadoresSobrantes.map(jugador => (
+                        <li key={jugador.id}>{jugador.name} <span className="text-muted-foreground">({jugador.rut})</span> - <span className="capitalize">{jugador.position}</span></li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </AccordionContent>
             </AccordionItem>
           ))}
@@ -2762,7 +2761,7 @@ const handleConfirmPlayoffSchedule = () => {
                                               )}
 
                                               {/* SEMIFINALS COLUMN */}
-                                              <div className="flex flex-col md:flex-row lg:flex-col items-center justify-between lg:h-[36rem] space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
+                                              <div className="flex flex-col md:flex-row lg:flex-col items-center justify-around lg:h-[36rem] space-y-16 md:space-y-0 md:space-x-8 lg:space-x-0">
                                                 <PlayoffMatchBox match={sf1 ? { ...sf1, categoryId: catFixture.categoryId } : undefined} title="Semifinal 1" onEditClick={() => { if(sf1) { setCurrentEditingMatch({ ...sf1, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
                                                 <PlayoffMatchBox match={sf2 ? { ...sf2, categoryId: catFixture.categoryId } : undefined} title="Semifinal 2" onEditClick={() => { if(sf2) { setCurrentEditingMatch({ ...sf2, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
                                               </div>
