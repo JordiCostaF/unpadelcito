@@ -1735,7 +1735,7 @@ const handleConfirmPlayoffSchedule = () => {
     if (catFixture.groups.length === 3 && hasQuarterFinals) {
         // Logic for 3 groups qualifying 8 teams for Quarter Finals
         // Qualifiers: Top 2 from each group (6 teams) + 2 best 3rd-place finishers
-        type TeamStanding = { team: Dupla; standing: Standing };
+        type TeamStanding = { team: Dupla; standing: Standing; groupId: string };
 
         const firstPlaceTeams: TeamStanding[] = [];
         const secondPlaceTeams: TeamStanding[] = [];
@@ -1757,15 +1757,15 @@ const handleConfirmPlayoffSchedule = () => {
 
             if (sortedStandings[0]) {
                 const team = allDuplasMap.get(sortedStandings[0].duplaId);
-                if (team) firstPlaceTeams.push({ team, standing: sortedStandings[0] });
+                if (team) firstPlaceTeams.push({ team, standing: sortedStandings[0], groupId: group.id });
             }
             if (sortedStandings[1]) {
                  const team = allDuplasMap.get(sortedStandings[1].duplaId);
-                 if (team) secondPlaceTeams.push({ team, standing: sortedStandings[1] });
+                 if (team) secondPlaceTeams.push({ team, standing: sortedStandings[1], groupId: group.id });
             }
             if (sortedStandings[2]) {
                  const team = allDuplasMap.get(sortedStandings[2].duplaId);
-                 if (team) thirdPlaceTeams.push({ team, standing: sortedStandings[2] });
+                 if (team) thirdPlaceTeams.push({ team, standing: sortedStandings[2], groupId: group.id });
             }
         });
         
@@ -1781,28 +1781,69 @@ const handleConfirmPlayoffSchedule = () => {
             return;
         }
         
-        // Build the final seeded list of 8 Dupla objects
-        const seededDuplas: Dupla[] = [
-            firstPlaceTeams[0].team,  // Seed 1: Best 1st
-            firstPlaceTeams[1].team,  // Seed 2: 2nd best 1st
-            firstPlaceTeams[2].team,  // Seed 3: 3rd best 1st
-            secondPlaceTeams[0].team, // Seed 4: Best 2nd
-            secondPlaceTeams[1].team, // Seed 5: 2nd best 2nd
-            secondPlaceTeams[2].team, // Seed 6: 3rd best 2nd
-            thirdPlaceTeams[0].team,  // Seed 7: Best 3rd
-            thirdPlaceTeams[1].team,  // Seed 8: 2nd best 3rd
+        const seededEntries: TeamStanding[] = [
+            firstPlaceTeams[0],  // Seed 1
+            firstPlaceTeams[1],  // Seed 2
+            firstPlaceTeams[2],  // Seed 3
+            secondPlaceTeams[0], // Seed 4
+            secondPlaceTeams[1], // Seed 5
+            secondPlaceTeams[2], // Seed 6
+            thirdPlaceTeams[0],  // Seed 7
+            thirdPlaceTeams[1],  // Seed 8
         ];
         
+        // Standard pairings
+        let qf_1_vs_8 = { p1: seededEntries[0], p2: seededEntries[7] };
+        let qf_4_vs_5 = { p1: seededEntries[3], p2: seededEntries[4] };
+        let qf_2_vs_7 = { p1: seededEntries[1], p2: seededEntries[6] };
+        let qf_3_vs_6 = { p1: seededEntries[2], p2: seededEntries[5] };
+
+        const hasConflict = (p: {p1: TeamStanding, p2: TeamStanding}) => p.p1.groupId === p.p2.groupId;
+
+        // Check SF1 bracket (1v8 and 4v5) and try to resolve conflicts
+        if (hasConflict(qf_1_vs_8)) {
+            const new_1_vs_5 = { p1: qf_1_vs_8.p1, p2: qf_4_vs_5.p2 };
+            const new_4_vs_8 = { p1: qf_4_vs_5.p1, p2: qf_1_vs_8.p2 };
+            if (!hasConflict(new_1_vs_5) && !hasConflict(new_4_vs_8)) {
+                qf_1_vs_8 = new_1_vs_5;
+                qf_4_vs_5 = new_4_vs_8;
+            }
+        } else if (hasConflict(qf_4_vs_5)) {
+            const new_1_vs_5 = { p1: qf_1_vs_8.p1, p2: qf_4_vs_5.p2 };
+            const new_4_vs_8 = { p1: qf_4_vs_5.p1, p2: qf_1_vs_8.p2 };
+            if (!hasConflict(new_1_vs_5) && !hasConflict(new_4_vs_8)) {
+                qf_1_vs_8 = new_1_vs_5;
+                qf_4_vs_5 = new_4_vs_8;
+            }
+        }
+
+        // Check SF2 bracket (2v7 and 3v6) and try to resolve conflicts
+        if (hasConflict(qf_2_vs_7)) {
+            const new_2_vs_6 = { p1: qf_2_vs_7.p1, p2: qf_3_vs_6.p2 };
+            const new_3_vs_7 = { p1: qf_3_vs_6.p1, p2: qf_2_vs_7.p2 };
+            if (!hasConflict(new_2_vs_6) && !hasConflict(new_3_vs_7)) {
+                qf_2_vs_7 = new_2_vs_6;
+                qf_3_vs_6 = new_3_vs_7;
+            }
+        } else if (hasConflict(qf_3_vs_6)) {
+            const new_2_vs_6 = { p1: qf_2_vs_7.p1, p2: qf_3_vs_6.p2 };
+            const new_3_vs_7 = { p1: qf_3_vs_6.p1, p2: qf_2_vs_7.p2 };
+             if (!hasConflict(new_2_vs_6) && !hasConflict(new_3_vs_7)) {
+                qf_2_vs_7 = new_2_vs_6;
+                qf_3_vs_6 = new_3_vs_7;
+            }
+        }
+
         const qf1 = catFixture.playoffMatches.find(m => m.id.endsWith('-QF1'));
         const qf2 = catFixture.playoffMatches.find(m => m.id.endsWith('-QF2'));
         const qf3 = catFixture.playoffMatches.find(m => m.id.endsWith('-QF3'));
         const qf4 = catFixture.playoffMatches.find(m => m.id.endsWith('-QF4'));
 
-        // Standard seeding: 1v8, 2v7, 3v6, 4v5, but bracket is usually 1v8 and 4v5 on one side, 2v7 and 3v6 on other.
-        if (qf1) { qf1.dupla1 = seededDuplas[0]; qf1.dupla2 = seededDuplas[7]; qf1.description = `${seededDuplas[0].nombre} (1º) vs ${seededDuplas[7].nombre} (8º)`; } // 1 vs 8
-        if (qf2) { qf2.dupla1 = seededDuplas[3]; qf2.dupla2 = seededDuplas[4]; qf2.description = `${seededDuplas[3].nombre} (4º) vs ${seededDuplas[4].nombre} (5º)`; } // 4 vs 5 -> Winner plays winner of 1v8 in SF1
-        if (qf3) { qf3.dupla1 = seededDuplas[2]; qf3.dupla2 = seededDuplas[5]; qf3.description = `${seededDuplas[2].nombre} (3º) vs ${seededDuplas[5].nombre} (6º)`; } // 3 vs 6
-        if (qf4) { qf4.dupla1 = seededDuplas[1]; qf4.dupla2 = seededDuplas[6]; qf4.description = `${seededDuplas[1].nombre} (2º) vs ${seededDuplas[6].nombre} (7º)`; } // 2 vs 7 -> Winner plays winner of 3v6 in SF2
+        if (qf1) { qf1.dupla1 = qf_1_vs_8.p1.team; qf1.dupla2 = qf_1_vs_8.p2.team; qf1.description = `${qf_1_vs_8.p1.team.nombre} vs ${qf_1_vs_8.p2.team.nombre}`; }
+        if (qf2) { qf2.dupla1 = qf_4_vs_5.p1.team; qf2.dupla2 = qf_4_vs_5.p2.team; qf2.description = `${qf_4_vs_5.p1.team.nombre} vs ${qf_4_vs_5.p2.team.nombre}`; }
+        if (qf3) { qf3.dupla1 = qf_3_vs_6.p1.team; qf3.dupla2 = qf_3_vs_6.p2.team; qf3.description = `${qf_3_vs_6.p1.team.nombre} vs ${qf_3_vs_6.p2.team.nombre}`; }
+        if (qf4) { qf4.dupla1 = qf_2_vs_7.p1.team; qf4.dupla2 = qf_2_vs_7.p2.team; qf4.description = `${qf_2_vs_7.p1.team.nombre} vs ${qf_2_vs_7.p2.team.nombre}`; }
+
     }
     else if (catFixture.groups.length === 4 && hasQuarterFinals) {
         const qualifiedTeams: { [groupName: string]: Dupla[] } = {};
@@ -2721,7 +2762,7 @@ const handleConfirmPlayoffSchedule = () => {
                                               )}
 
                                               {/* SEMIFINALS COLUMN */}
-                                              <div className="flex flex-col md:flex-row lg:flex-col items-center lg:justify-between lg:h-[36rem] space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
+                                              <div className="flex flex-col md:flex-row lg:flex-col items-center justify-between lg:h-[36rem] space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
                                                 <PlayoffMatchBox match={sf1 ? { ...sf1, categoryId: catFixture.categoryId } : undefined} title="Semifinal 1" onEditClick={() => { if(sf1) { setCurrentEditingMatch({ ...sf1, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
                                                 <PlayoffMatchBox match={sf2 ? { ...sf2, categoryId: catFixture.categoryId } : undefined} title="Semifinal 2" onEditClick={() => { if(sf2) { setCurrentEditingMatch({ ...sf2, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
                                               </div>
