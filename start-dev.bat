@@ -1,29 +1,26 @@
 @echo off
-setlocal
+title Starting UnPadelazo Dev Servers
 
-:: Get the directory of the batch file
-set "batch_dir=%~dp0"
+echo Starting Next.js and Genkit servers in the background...
 
-:: Create a VBScript to run commands invisibly
->"%temp%\_invisible.vbs" echo CreateObject("Wscript.Shell").Run "cmd /c " & WScript.Arguments(0), 0, False
+:: Create a temporary VBScript to run commands hidden
+>%temp%\runhidden.vbs echo Set WshShell = CreateObject("WScript.Shell")
+>>%temp%\runhidden.vbs echo WshShell.Run "npm run dev", 0, false
+>>%temp%\runhidden.vbs echo WshShell.Run "npm run genkit:dev", 0, false
 
-echo Starting development servers in the background...
+:: Execute the VBScript
+cscript //nologo %temp%\runhidden.vbs
 
-:: Run the commands using the VBScript
-:: We must change directory first, as the VBS script runs in a different context
-wscript.exe "%temp%\_invisible.vbs" "cd /d ""%batch_dir%"" && npm run dev"
-wscript.exe "%temp%\_invisible.vbs" "cd /d ""%batch_dir%"" && npm run genkit:watch"
+:: Delete the temporary VBScript
+del %temp%\runhidden.vbs
 
-echo.
-echo The servers have been started.
-echo They will run in the background without a visible window.
-echo To stop them, you can use Task Manager to end "Node.js" processes,
-echo or run the included 'stop-dev.bat' script.
-echo.
+echo Servers are starting. Waiting a few seconds for them to be ready...
+:: Wait for 5 seconds to give servers time to start
+timeout /t 5 /nobreak > nul
 
-:: Clean up the VBS file after a short delay to ensure it's been used
-timeout /t 2 /nobreak > nul
-del "%temp%\_invisible.vbs"
+echo Opening project in browser at http://localhost:3000
+:: Open the browser
+start "" http://localhost:3000
 
-echo Press any key to close this window.
-pause > nul
+echo Done. The servers are running in the background.
+echo Use stop-dev.bat to stop them.
