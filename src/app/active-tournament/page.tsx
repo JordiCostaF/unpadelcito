@@ -186,15 +186,15 @@ function shuffleArray<T>(array: T[]): T[] {
 
 function compareStandingsNumerically(sA: Standing, sB: Standing): number {
   // 1. Puntos (descendente)
-  if (sA.pts !== sB.pts) return sB.pts - sB.pts;
+  if (sA.pts !== sB.pts) return sB.pts - sA.pts;
   // 2. Partidos Ganados (descendente)
-  if (sA.pg !== sB.pg) return sB.pg - sB.pg;
+  if (sA.pg !== sB.pg) return sB.pg - sA.pg;
   // 3. Diferencia de Puntos (descendente)
   const diffA = sA.pf - sA.pc;
   const diffB = sB.pf - sB.pc;
   if (diffA !== diffB) return diffB - diffA;
   // 4. Puntos a Favor (descendente)
-  if (sA.pf !== sB.pf) return sB.pf - sB.pf;
+  if (sA.pf !== sB.pf) return sB.pf - sA.pf;
   // 5. Puntos en Contra (ascendente, menos es mejor)
   if (sA.pc !== sB.pc) return sA.pc - sB.pc;
   // Si todo es igual, se considera empate numérico
@@ -2221,7 +2221,7 @@ const handleConfirmPlayoffSchedule = () => {
                               : 0
                           }
                           className="h-2 w-24 mt-1"
-                        </div>
+                        />
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
@@ -2654,7 +2654,7 @@ const handleConfirmPlayoffSchedule = () => {
                                                   )}
 
                                                   {/* SEMIFINALS COLUMN */}
-                                                  <div className="flex flex-col md:flex-row lg:flex-col items-center lg:justify-around lg:h-[36rem] lg:space-y-48 space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
+                                                  <div className="flex flex-col md:flex-row lg:flex-col items-center lg:justify-between lg:h-[36rem] lg:space-y-48 space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
                                                     <PlayoffMatchBox match={sf1 ? { ...sf1, categoryId: catFixture.categoryId } : undefined} title="Semifinal 1" onEditClick={() => { if(sf1) { setCurrentEditingMatch({ ...sf1, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
                                                     <PlayoffMatchBox match={sf2 ? { ...sf2, categoryId: catFixture.categoryId } : undefined} title="Semifinal 2" onEditClick={() => { if(sf2) { setCurrentEditingMatch({ ...sf2, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
                                                   </div>
@@ -2832,5 +2832,3 @@ export default function ActiveTournamentPage() {
     </Suspense>
   );
 }
-
-    
