@@ -96,7 +96,9 @@ export interface Standing {
 
 export interface Match {
   id: string;
-  round?: number; 
+  round?: number;
+  description?: string;
+  dependsOn?: string[];
   dupla1: Dupla;
   dupla2: Dupla;
   score1?: number;
@@ -105,6 +107,7 @@ export interface Match {
   time?: string;
   status: 'pending' | 'completed' | 'live';
   winnerId?: string;
+  loserId?: string;
   groupOriginId?: string; 
 }
 
@@ -393,36 +396,69 @@ function EditDuplaDialog({ isOpen, onClose, duplaInfo, onSubmit, form }: EditDup
 
 
 function generateAndOrderGroupMatches(duplasInGroup: Dupla[], groupId: string, isAmericanoMode: boolean): Match[] {
-  // Modo Torneo for groups of 4
+  // Modo Torneo for groups of 4 with dependent matches
   if (!isAmericanoMode && duplasInGroup.length === 4) {
-      const duplas = shuffleArray(duplasInGroup); // Shuffle to make initial pairings random
-      const [d1, d2, d3, d4] = duplas;
-      
-      const matchTuples: [Dupla, Dupla][] = [
-          [d1, d2],
-          [d3, d4],
-          [d1, d4], // Corresponds to user's example: winner-like(1v2) vs loser-like(3v4)
-          [d2, d3], // Corresponds to user's example: loser-like(1v2) vs winner-like(3v4)
-      ];
+    const [d1, d2, d3, d4] = shuffleArray(duplasInGroup);
 
-      return matchTuples.map((tuple, index) => ({
-          id: `${groupId}-M${index + 1}`,
-          dupla1: tuple[0],
-          dupla2: tuple[1],
-          status: 'pending',
-          groupOriginId: groupId,
-          court: undefined,
-          time: undefined,
-          score1: undefined,
-          score2: undefined,
-          winnerId: undefined,
-          round: undefined,
-      }));
+    const placeholderDupla = (name: string, idSuffix: string): Dupla => ({
+      id: `placeholder-${groupId}-${idSuffix}`,
+      nombre: name,
+      jugadores: [] as any,
+    });
+
+    const match1Id = `${groupId}-M1`;
+    const match2Id = `${groupId}-M2`;
+      
+    const match1: Match = {
+        id: match1Id,
+        dupla1: d1,
+        dupla2: d2,
+        status: 'pending',
+        groupOriginId: groupId,
+        round: 1,
+        description: "Ronda 1: Partido 1",
+        court: undefined, time: undefined, score1: undefined, score2: undefined, winnerId: undefined,
+    };
+
+    const match2: Match = {
+        id: match2Id,
+        dupla1: d3,
+        dupla2: d4,
+        status: 'pending',
+        groupOriginId: groupId,
+        round: 1,
+        description: "Ronda 1: Partido 2",
+        court: undefined, time: undefined, score1: undefined, score2: undefined, winnerId: undefined,
+    };
+
+    const match3: Match = {
+        id: `${groupId}-M3`,
+        dupla1: placeholderDupla(`Ganador P1`, 'W-M1'),
+        dupla2: placeholderDupla(`Perdedor P2`, 'L-M2'),
+        status: 'pending',
+        groupOriginId: groupId,
+        round: 2,
+        description: "Ronda 2: Ganador P1 vs Perdedor P2",
+        dependsOn: [match1Id, match2Id],
+        court: undefined, time: undefined, score1: undefined, score2: undefined, winnerId: undefined,
+    };
+      
+    const match4: Match = {
+        id: `${groupId}-M4`,
+        dupla1: placeholderDupla(`Ganador P2`, 'W-M2'),
+        dupla2: placeholderDupla(`Perdedor P1`, 'L-M1'),
+        status: 'pending',
+        groupOriginId: groupId,
+        round: 2,
+        description: "Ronda 2: Ganador P2 vs Perdedor P1",
+        dependsOn: [match1Id, match2Id],
+        court: undefined, time: undefined, score1: undefined, score2: undefined, winnerId: undefined,
+    };
+
+    return [match1, match2, match3, match4];
   }
   
   // Modo Americano (Round Robin) for all other cases
-  // This logic is already correct for groups of 3 (each plays 2 matches)
-  // And it's the default for other sizes or when Americano mode is on.
   const allPossibleMatchTuples: [Dupla, Dupla][] = [];
   for (let i = 0; i < duplasInGroup.length; i++) {
     for (let j = i + 1; j < duplasInGroup.length; j++) {
@@ -434,7 +470,6 @@ function generateAndOrderGroupMatches(duplasInGroup: Dupla[], groupId: string, i
     return [];
   }
   
-  // The existing scheduling logic is fine for round-robin
   const scheduledOrderTuples: [Dupla, Dupla][] = [];
   let remainingMatchTuples = [...allPossibleMatchTuples];
 
@@ -519,6 +554,13 @@ const recalculateMatchTimesForGroup = (group: Group, tournamentDate: string, sta
             lastPlayedByDuplaInGroup.set(match.dupla2.id, new Date(completedMatchTime.getTime()));
         }
         continue;
+    }
+    
+    // Si el partido aún depende de resultados, no le asignamos hora todavía.
+    if (match.dupla1.id.startsWith('placeholder-') || match.dupla2.id.startsWith('placeholder-')) {
+      match.time = undefined;
+      match.court = assignedCourt;
+      continue;
     }
 
 
@@ -730,9 +772,9 @@ function ActiveTournamentPageComponent() {
       // Check for 5-minute warning
       const fiveMinutesInSeconds = 5 * 60;
       if (prevTimer.timeRemaining > fiveMinutesInSeconds && currentTimer.timeRemaining <= fiveMinutesInSeconds) {
-        const currentMatch = timerInfo.matches.find(m => m.status !== 'completed');
+        const currentMatch = timerInfo.matches.find(m => m.status !== 'completed' && !m.dupla1.id.startsWith('placeholder-'));
         const currentMatchIndex = timerInfo.matches.findIndex(m => m.id === currentMatch?.id);
-        const nextMatch = currentMatchIndex > -1 ? timerInfo.matches[currentMatchIndex + 1] : undefined;
+        const nextMatch = currentMatchIndex > -1 ? timerInfo.matches.slice(currentMatchIndex + 1).find(m => !m.dupla1.id.startsWith('placeholder-')) : undefined;
         
         if (nextMatch) {
             setToastWarnings(prev => {
@@ -1432,9 +1474,20 @@ function ActiveTournamentPageComponent() {
         toast({ title: "Acción no permitida", description: "No se pueden reordenar partidos completados.", variant: "destructive" });
         return;
       }
+      
+      const isPlaceholderMatch = group.matches[matchIndex].dupla1.id.startsWith('placeholder-');
+      if (isPlaceholderMatch) {
+        toast({ title: "Acción no permitida", description: "No se pueden reordenar partidos no definidos.", variant: "destructive" });
+        return;
+      }
 
       const newMatchIndex = direction === 'up' ? matchIndex - 1 : matchIndex + 1;
       if (newMatchIndex < 0 || newMatchIndex >= group.matches.length) return;
+
+      if(group.matches[newMatchIndex].dupla1.id.startsWith('placeholder-')) {
+         toast({ title: "Acción no permitida", description: "No se puede mover un partido sobre uno no definido.", variant: "destructive" });
+        return;
+      }
 
       const newMatches = [...group.matches];
       const [movedMatch] = newMatches.splice(matchIndex, 1);
@@ -1518,6 +1571,7 @@ function ActiveTournamentPageComponent() {
                 matchToUpdate.score2 = score2;
                 matchToUpdate.status = 'completed';
                 matchToUpdate.winnerId = score1 > score2 ? matchToUpdate.dupla1.id : matchToUpdate.dupla2.id;
+                matchToUpdate.loserId = score1 > score2 ? matchToUpdate.dupla2.id : matchToUpdate.dupla1.id;
                 matchFound = true;
 
                 const standing1 = group.standings.find(s => s.duplaId === matchToUpdate.dupla1.id);
@@ -1562,7 +1616,48 @@ function ActiveTournamentPageComponent() {
                     }
                 }
                 
-                const updatedGroup = group;
+                const isTournamentModeGroupOf4 = !isAmericanoMode && group.duplas.length === 4;
+                if (isTournamentModeGroupOf4 && matchToUpdate.round === 1) {
+                    const round1Matches = group.matches.filter(m => m.round === 1);
+                    const bothRound1MatchesCompleted = round1Matches.length === 2 && round1Matches.every(m => m.status === 'completed');
+
+                    if (bothRound1MatchesCompleted) {
+                        const match1 = round1Matches.find(m => m.id.endsWith('-M1'));
+                        const match2 = round1Matches.find(m => m.id.endsWith('-M2'));
+
+                        if (match1 && match2 && match1.winnerId && match1.loserId && match2.winnerId && match2.loserId) {
+                            const winnerM1 = group.duplas.find(d => d.id === match1.winnerId);
+                            const loserM1 = group.duplas.find(d => d.id === match1.loserId);
+                            const winnerM2 = group.duplas.find(d => d.id === match2.winnerId);
+                            const loserM2 = group.duplas.find(d => d.id === match2.loserId);
+                            
+                            const match3 = group.matches.find(m => m.id.endsWith('-M3'));
+                            const match4 = group.matches.find(m => m.id.endsWith('-M4'));
+
+                            if (match3 && winnerM1 && loserM2) {
+                                match3.dupla1 = winnerM1;
+                                match3.dupla2 = loserM2;
+                                match3.description = `${winnerM1.nombre} vs ${loserM2.nombre}`;
+                            }
+                            if (match4 && winnerM2 && loserM1) {
+                                match4.dupla1 = winnerM2;
+                                match4.dupla2 = loserM1;
+                                match4.description = `${winnerM2.nombre} vs ${loserM1.nombre}`;
+                            }
+
+                            toast({
+                                title: "Siguiente Ronda Definida",
+                                description: `Se han definido los partidos de la Ronda 2 para el ${group.name}.`,
+                            });
+                        }
+                    }
+                }
+                
+                let updatedGroup = group;
+                if(group.groupStartTime && group.groupMatchDuration){
+                  updatedGroup = recalculateMatchTimesForGroup(group, torneo.date, group.groupStartTime, group.groupMatchDuration);
+                }
+                
                 setActiveTimers(prev => prev.map(timerInfo =>
                     timerInfo.groupId === updatedGroup.id
                         ? { ...timerInfo, matches: [...updatedGroup.matches] }
@@ -1573,7 +1668,7 @@ function ActiveTournamentPageComponent() {
                   handleTimerControl(currentEditingMatch.groupOriginId, 'reset');
                 }
 
-                const newCurrentMatch = updatedGroup.matches.find(m => m.status !== 'completed');
+                const newCurrentMatch = updatedGroup.matches.find(m => m.status !== 'completed' && !m.dupla1.id.startsWith('placeholder-'));
                 if (newCurrentMatch) {
                     // This match is now starting, remove its warning if it exists.
                     setToastWarnings(prev => {
@@ -2286,10 +2381,9 @@ const handleConfirmPlayoffSchedule = () => {
               const timer = groupTimers[timerInfo.groupId];
               if (!timer) return null;
 
-              const currentMatch = timerInfo.matches.find(m => m.status !== 'completed');
+              const currentMatch = timerInfo.matches.find(m => m.status !== 'completed' && !m.dupla1.id.startsWith('placeholder-'));
               const currentMatchIndex = timerInfo.matches.findIndex(m => m.id === currentMatch?.id);
-              const nextMatch = currentMatchIndex > -1 ? timerInfo.matches[currentMatchIndex + 1] : undefined;
-
+              const nextMatch = currentMatchIndex > -1 ? timerInfo.matches.slice(currentMatchIndex + 1).find(m => !m.dupla1.id.startsWith('placeholder-')) : undefined;
 
               return (
                 <div key={timerInfo.groupId} className="border p-4 rounded-lg bg-background">
@@ -2665,51 +2759,55 @@ const handleConfirmPlayoffSchedule = () => {
                                         <div key={`${group.id}-matches`} className="mb-6">
                                             <h4 className="text-lg font-semibold text-primary mb-2">Partidos {group.name}</h4>
                                             <ul className="space-y-2">
-                                                {group.matches.map((match, matchIndex) => (
-                                                    <li key={match.id} className="p-3 border rounded-md bg-secondary/20 text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                                                        <div className="flex-grow font-medium">
-                                                            <span>{match.dupla1.nombre}</span> <span className="font-bold mx-1 text-primary">vs</span> <span>{match.dupla2.nombre}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-2 flex-shrink-0">
-                                                            <div className="text-xs text-muted-foreground text-right">
-                                                                <span>{match.court ? (typeof match.court === 'number' ? `Cancha ${match.court}` : match.court) : 'Cancha TBD'}, {match.time || 'Hora TBD'}</span>
-                                                                {match.status === 'completed' && <span className="font-bold ml-2">{`${match.score1} : ${match.score2}`}</span>}
+                                                {group.matches.map((match, matchIndex) => {
+                                                    const isPlaceholderMatch = match.dupla1.id.startsWith('placeholder-') || match.dupla2.id.startsWith('placeholder-');
+                                                    return (
+                                                        <li key={match.id} className="p-3 border rounded-md bg-secondary/20 text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                                            <div className="flex-grow font-medium">
+                                                                <span>{match.dupla1.nombre}</span> <span className="font-bold mx-1 text-primary">vs</span> <span>{match.dupla2.nombre}</span>
                                                             </div>
-                                                            {group.groupStartTime && match.status !== 'completed' && (
-                                                                <div className="flex border-l pl-2 ml-2">
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="icon"
-                                                                        className="h-6 w-6"
-                                                                        title="Mover arriba"
-                                                                        disabled={matchIndex === 0}
-                                                                        onClick={() => handleMoveMatch(catFixture.categoryId, group.id, matchIndex, 'up')}
-                                                                    >
-                                                                        <ArrowUp className="h-4 w-4" />
-                                                                    </Button>
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="icon"
-                                                                        className="h-6 w-6"
-                                                                        title="Mover abajo"
-                                                                        disabled={matchIndex === group.matches.length - 1}
-                                                                        onClick={() => handleMoveMatch(catFixture.categoryId, group.id, matchIndex, 'down')}
-                                                                    >
-                                                                        <ArrowDown className="h-4 w-4" />
-                                                                    </Button>
+                                                            <div className="flex items-center gap-2 flex-shrink-0">
+                                                                <div className="text-xs text-muted-foreground text-right">
+                                                                    <span>{match.court ? (typeof match.court === 'number' ? `Cancha ${match.court}` : match.court) : 'Cancha TBD'}, {match.time || 'Hora TBD'}</span>
+                                                                    {match.status === 'completed' && <span className="font-bold ml-2">{`${match.score1} : ${match.score2}`}</span>}
                                                                 </div>
-                                                            )}
-                                                            <Button variant="outline" size="sm" className="text-xs h-7"
-                                                                onClick={() => {
-                                                                    setCurrentEditingMatch({ ...match, categoryId: catFixture.categoryId, groupOriginId: match.groupOriginId || group.id });
-                                                                    setIsResultModalOpen(true);
-                                                                }}
-                                                            >
-                                                                <Edit3 className="mr-1 h-3 w-3" />{match.status === 'completed' ? 'Editar' : 'Ingresar'}
-                                                            </Button>
-                                                        </div>
-                                                    </li>
-                                                ))}
+                                                                {group.groupStartTime && match.status !== 'completed' && !isPlaceholderMatch && (
+                                                                    <div className="flex border-l pl-2 ml-2">
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-6 w-6"
+                                                                            title="Mover arriba"
+                                                                            disabled={matchIndex === 0 || group.matches[matchIndex - 1].dupla1.id.startsWith('placeholder-')}
+                                                                            onClick={() => handleMoveMatch(catFixture.categoryId, group.id, matchIndex, 'up')}
+                                                                        >
+                                                                            <ArrowUp className="h-4 w-4" />
+                                                                        </Button>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-6 w-6"
+                                                                            title="Mover abajo"
+                                                                            disabled={matchIndex === group.matches.length - 1}
+                                                                            onClick={() => handleMoveMatch(catFixture.categoryId, group.id, matchIndex, 'down')}
+                                                                        >
+                                                                            <ArrowDown className="h-4 w-4" />
+                                                                        </Button>
+                                                                    </div>
+                                                                )}
+                                                                <Button variant="outline" size="sm" className="text-xs h-7"
+                                                                    disabled={isPlaceholderMatch}
+                                                                    onClick={() => {
+                                                                        setCurrentEditingMatch({ ...match, categoryId: catFixture.categoryId, groupOriginId: match.groupOriginId || group.id });
+                                                                        setIsResultModalOpen(true);
+                                                                    }}
+                                                                >
+                                                                    <Edit3 className="mr-1 h-3 w-3" />{match.status === 'completed' ? 'Editar' : 'Ingresar'}
+                                                                </Button>
+                                                            </div>
+                                                        </li>
+                                                    );
+                                                })}
                                             </ul>
                                         </div>
                                     )) : <p className="text-muted-foreground text-center py-3">No hay partidos generados para esta categoría.</p>}
