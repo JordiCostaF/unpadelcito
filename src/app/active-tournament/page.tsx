@@ -1039,6 +1039,7 @@ function ActiveTournamentPageComponent() {
           }
           setGroupScheduleSettings(initialGroupSettings);
           setGroupTimers(initialTimers);
+          loadedActiveTimers.sort((a, b) => a.court.toString().localeCompare(b.court.toString(), 'es', { numeric: true }));
           setActiveTimers(loadedActiveTimers);
 
         } else {
@@ -1365,7 +1366,7 @@ function ActiveTournamentPageComponent() {
         } else {
             updatedTimers.push(newTimerInfo);
         }
-        return updatedTimers.sort((a, b) => a.court.toString().localeCompare(b.court.toString()));
+        return updatedTimers.sort((a, b) => a.court.toString().localeCompare(b.court.toString(), 'es', { numeric: true }));
     });
 
 
