@@ -572,6 +572,7 @@ function ActiveTournamentPageComponent() {
   // Dupla editing state
   const [isEditDuplaModalOpen, setIsEditDuplaModalOpen] = useState(false);
   const [editingDuplaInfo, setEditingDuplaInfo] = useState<{dupla: Dupla; categoryId: string;} | null>(null);
+  const [groupConfiguration, setGroupConfiguration] = useState<Record<string, { numGroups: string }>>({});
 
   const [isPlayoffSchedulerDialogOpen, setIsPlayoffSchedulerDialogOpen] = useState(false);
   const [categoryForPlayoffScheduling, setCategoryForPlayoffScheduling] = useState<CategoriaConDuplas | null>(null);
@@ -1147,138 +1148,110 @@ function ActiveTournamentPageComponent() {
     }));
   };
 
+  const handleGroupConfigChange = (categoryId: string, numGroups: string) => {
+    setGroupConfiguration(prev => ({
+        ...prev,
+        [categoryId]: { numGroups }
+    }));
+  };
 
-  const generateFixture = () => {
-    if (!torneo || !torneo.categoriesWithDuplas) {
-      toast({ title: "Error", description: "Faltan datos del torneo para generar el fixture.", variant: "destructive" });
-      return;
+  const handleGenerateCategoryFixture = (categoryId: string) => {
+    if (!torneo) return;
+
+    const categoryConfig = groupConfiguration[categoryId];
+    const numGroups = categoryConfig ? parseInt(categoryConfig.numGroups, 10) : 0;
+    
+    if (!numGroups || numGroups <= 0) {
+        toast({ title: "Error de Configuración", description: "Por favor, selecciona un número de grupos válido.", variant: "destructive" });
+        return;
     }
 
-    const newFixture: FixtureData = {};
-    const initialGroupSettings: GroupScheduleState = {};
-    const newTimersState: Record<string, GroupTimerState> = {};
+    const category = torneo.categoriesWithDuplas.find(c => c.id === categoryId);
+    if (!category || category.duplas.length < 2) {
+        toast({ title: "Error", description: "No hay suficientes duplas en esta categoría para generar grupos.", variant: "destructive" });
+        return;
+    }
+
+    if (Math.floor(category.duplas.length / numGroups) < 2) {
+        toast({
+            title: "Configuración Inválida",
+            description: `No se pueden crear ${numGroups} grupos. Cada grupo debe tener al menos 2 duplas. Prueba con menos grupos.`,
+            variant: "destructive"
+        });
+        return;
+    }
+
+    const categoryDuplas = shuffleArray([...category.duplas]);
+    const groups: Group[] = [];
+    let duplasRemaining = [...categoryDuplas];
+
+    for (let i = 0; i < numGroups; i++) {
+        const groupLetter = String.fromCharCode('A'.charCodeAt(0) + i);
+        const groupId = `${category.id}-G${groupLetter}`;
+        const numDuplasForThisGroup = Math.ceil(duplasRemaining.length / (numGroups - i));
+        const groupDuplas = duplasRemaining.splice(0, numDuplasForThisGroup);
+        
+        groups.push({
+            id: groupId,
+            name: `Grupo ${groupLetter}`,
+            duplas: groupDuplas,
+            standings: groupDuplas.map(d => ({ duplaId: d.id, duplaName: d.nombre, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0, pts: 0 })),
+            matches: generateAndOrderGroupMatches(groupDuplas, groupId),
+            groupAssignedCourt: undefined,
+            groupStartTime: undefined,
+            groupMatchDuration: undefined,
+        });
+    }
+
+    let playoffMatchesForCategory: PlayoffMatch[] | undefined = undefined;
+    if (numGroups === 2 && groups.every(g => g.duplas.length >= 2)) {
+        const placeholderDuplaW_G1 = { id: 'placeholder-G1W', nombre: 'Ganador Grupo A', jugadores: [] as any };
+        const placeholderDuplaRU_G1 = { id: 'placeholder-G1RU', nombre: 'Segundo Grupo A', jugadores: [] as any };
+        const placeholderDuplaW_G2 = { id: 'placeholder-G2W', nombre: 'Ganador Grupo B', jugadores: [] as any };
+        const placeholderDuplaRU_G2 = { id: 'placeholder-G2RU', nombre: 'Segundo Grupo B', jugadores: [] as any };
+        const placeholderDuplaW_SF1 = { id: 'placeholder-SF1W', nombre: 'Ganador SF1', jugadores: [] as any };
+        const placeholderDuplaL_SF1 = { id: 'placeholder-SF1L', nombre: 'Perdedor SF1', jugadores: [] as any };
+        const placeholderDuplaW_SF2 = { id: 'placeholder-SF2W', nombre: 'Ganador SF2', jugadores: [] as any };
+        const placeholderDuplaL_SF2 = { id: 'placeholder-SF2L', nombre: 'Perdedor SF2', jugadores: [] as any };
+
+        playoffMatchesForCategory = [
+            { id: `${category.id}-SF1`, dupla1: placeholderDuplaW_G1, dupla2: placeholderDuplaRU_G2, status: 'pending', stage: 'semifinal', description: 'Ganador Grupo A vs Segundo Grupo B', court: undefined, time: undefined },
+            { id: `${category.id}-SF2`, dupla1: placeholderDuplaW_G2, dupla2: placeholderDuplaRU_G1, status: 'pending', stage: 'semifinal', description: 'Ganador Grupo B vs Segundo Grupo A', court: undefined, time: undefined },
+            { id: `${category.id}-F`, dupla1: placeholderDuplaW_SF1, dupla2: placeholderDuplaW_SF2, status: 'pending', stage: 'final', description: 'Final', court: undefined, time: undefined },
+        ];
+
+        if (playThirdPlace) {
+            playoffMatchesForCategory.push({ id: `${category.id}-TP`, dupla1: placeholderDuplaL_SF1, dupla2: placeholderDuplaL_SF2, status: 'pending', stage: 'tercer_puesto', description: 'Tercer Puesto', court: undefined, time: undefined });
+        }
+    }
+    
+    const categoryName = category ? `${category.type} - ${category.level}` : "Categoría Desconocida";
+    const newCategoryFixture: CategoryFixture = {
+        categoryId: category.id,
+        categoryName,
+        groups,
+        playoffMatches: playoffMatchesForCategory,
+    };
+
+    const newFixture = { ...(fixture || {}), [categoryId]: newCategoryFixture };
+    setFixture(newFixture);
+
     const defaultDuration = matchDurationGlobal || 60;
     const defaultDurationStr = defaultDuration.toString();
-
-    for (const category of torneo.categoriesWithDuplas) {
-        const categoryName = category ? `${category.type} - ${category.level}` : "Categoría Desconocida";
-        if (!category || category.duplas.length < 2) { 
-            newFixture[category.id] = {
-              categoryId: category.id,
-              categoryName: categoryName,
-              groups: [],
-              playoffMatches: []
-            };
-            continue; 
-        }
-
-        const groups: Group[] = [];
-        const categoryDuplas = shuffleArray([...category.duplas]); 
-        const numCategoryDuplas = categoryDuplas.length;
-        let groupLetter = 'A';
-
-        if (numCategoryDuplas < 3) {
-             const groupId = `${category.id}-G${groupLetter}`;
-            groups.push({
-                id: groupId,
-                name: `Grupo ${groupLetter}`,
-                duplas: [...categoryDuplas],
-                standings: categoryDuplas.map(d => ({ duplaId: d.id, duplaName: d.nombre, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0, pts: 0 })),
-                matches: generateAndOrderGroupMatches([...categoryDuplas], groupId), 
-                groupAssignedCourt: undefined,
-                groupStartTime: undefined,
-                groupMatchDuration: undefined,
-            });
-            initialGroupSettings[groupId] = { court: '1', startTime: '09:00', duration: defaultDurationStr };
-            newTimersState[groupId] = { isActive: false, timeRemaining: defaultDuration * 60, initialDuration: defaultDuration * 60 };
-        } else {
-            let duplasToAssign = numCategoryDuplas;
-            const idealGroupSize = Math.min(5, Math.max(3, Math.ceil(numCategoryDuplas / Math.ceil(numCategoryDuplas/5))));
-            
-            while(duplasToAssign > 0) {
-                const groupId = `${category.id}-G${groupLetter}`;
-                let currentGroupSize = Math.min(duplasToAssign, idealGroupSize);
-
-                if (duplasToAssign - currentGroupSize > 0 && duplasToAssign - currentGroupSize < 3) {
-                     if (groups.length > 0 && duplasToAssign < idealGroupSize && duplasToAssign < 3 && groups[groups.length-1].duplas.length + duplasToAssign <=5 ) { 
-                        const remainingDuplasToMerge = categoryDuplas.splice(0, duplasToAssign);
-                        groups[groups.length-1].duplas.push(...remainingDuplasToMerge);
-                        const newStandingsForCombined = remainingDuplasToMerge.map(d => ({ duplaId: d.id, duplaName: d.nombre, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0, pts: 0 }));
-                        groups[groups.length - 1].standings.push(...newStandingsForCombined);
-                        groups[groups.length - 1].matches = generateAndOrderGroupMatches(groups[groups.length-1].duplas, groups[groups.length-1].id);
-                        duplasToAssign = 0;
-                    } else { 
-                        currentGroupSize = Math.max(3, Math.min(duplasToAssign, currentGroupSize)); 
-                        const groupDuplas = categoryDuplas.splice(0, currentGroupSize);
-                        groups.push({ 
-                            id: groupId, 
-                            name: `Grupo ${groupLetter}`, 
-                            duplas: groupDuplas, 
-                            standings: groupDuplas.map(d => ({ duplaId: d.id, duplaName: d.nombre, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0, pts: 0 })), 
-                            matches: generateAndOrderGroupMatches(groupDuplas, groupId),
-                            groupAssignedCourt: undefined, groupStartTime: undefined, groupMatchDuration: undefined,
-                        });
-                        initialGroupSettings[groupId] = { court: '1', startTime: '09:00', duration: defaultDurationStr };
-                        newTimersState[groupId] = { isActive: false, timeRemaining: defaultDuration * 60, initialDuration: defaultDuration * 60 };
-                        duplasToAssign -= groupDuplas.length;
-                    }
-                } else {
-                    const groupDuplas = categoryDuplas.splice(0, currentGroupSize);
-                     groups.push({ 
-                        id: groupId, 
-                        name: `Grupo ${groupLetter}`, 
-                        duplas: groupDuplas, 
-                        standings: groupDuplas.map(d => ({ duplaId: d.id, duplaName: d.nombre, pj: 0, pg: 0, pp: 0, pf: 0, pc: 0, pts: 0 })), 
-                        matches: generateAndOrderGroupMatches(groupDuplas, groupId),
-                        groupAssignedCourt: undefined, groupStartTime: undefined, groupMatchDuration: undefined,
-                    });
-                    initialGroupSettings[groupId] = { court: '1', startTime: '09:00', duration: defaultDurationStr };
-                    newTimersState[groupId] = { isActive: false, timeRemaining: defaultDuration * 60, initialDuration: defaultDuration * 60 };
-                    duplasToAssign -= groupDuplas.length;
-                }
-                groupLetter = String.fromCharCode(groupLetter.charCodeAt(0) + 1);
-                if (categoryDuplas.length === 0) duplasToAssign = 0; 
-            }
-        }
-        
-        let playoffMatchesForCategory: PlayoffMatch[] | undefined = undefined;
-        if (groups.length === 2 && groups.every(g => g.duplas.length >=2)) { 
-            const placeholderDuplaW_G1 = {id: 'placeholder-G1W', nombre: 'Ganador Grupo A', jugadores:[] as any};
-            const placeholderDuplaRU_G1 = {id: 'placeholder-G1RU', nombre: 'Segundo Grupo A', jugadores:[] as any};
-            const placeholderDuplaW_G2 = {id: 'placeholder-G2W', nombre: 'Ganador Grupo B', jugadores:[] as any};
-            const placeholderDuplaRU_G2 = {id: 'placeholder-G2RU', nombre: 'Segundo Grupo B', jugadores:[] as any};
-            const placeholderDuplaW_SF1 = {id: 'placeholder-SF1W', nombre: 'Ganador SF1', jugadores:[] as any};
-            const placeholderDuplaL_SF1 = {id: 'placeholder-SF1L', nombre: 'Perdedor SF1', jugadores:[] as any};
-            const placeholderDuplaW_SF2 = {id: 'placeholder-SF2W', nombre: 'Ganador SF2', jugadores:[] as any};
-            const placeholderDuplaL_SF2 = {id: 'placeholder-SF2L', nombre: 'Perdedor SF2', jugadores:[] as any};
-
-            playoffMatchesForCategory = [
-                { id: `${category.id}-SF1`, dupla1: placeholderDuplaW_G1, dupla2: placeholderDuplaRU_G2, status: 'pending', stage: 'semifinal', description: 'Ganador Grupo A vs Segundo Grupo B', court: undefined, time: undefined },
-                { id: `${category.id}-SF2`, dupla1: placeholderDuplaW_G2, dupla2: placeholderDuplaRU_G1, status: 'pending', stage: 'semifinal', description: 'Ganador Grupo B vs Segundo Grupo A', court: undefined, time: undefined },
-                { id: `${category.id}-F`, dupla1: placeholderDuplaW_SF1, dupla2: placeholderDuplaW_SF2, status: 'pending', stage: 'final', description: 'Final', court: undefined, time: undefined },
-            ];
-
-            if (playThirdPlace) {
-              playoffMatchesForCategory.push({ id: `${category.id}-TP`, dupla1: placeholderDuplaL_SF1, dupla2: placeholderDuplaL_SF2, status: 'pending', stage: 'tercer_puesto', description: 'Tercer Puesto', court: undefined, time: undefined});
-            }
-        }
-
-        newFixture[category.id] = {
-            categoryId: category.id,
-            categoryName: categoryName,
-            groups,
-            playoffMatches: playoffMatchesForCategory
-        };
-    } 
-
-    setFixture(newFixture);
-    setGroupScheduleSettings(initialGroupSettings);
+    const newGroupSettings = { ...groupScheduleSettings };
+    const newTimersState = { ...groupTimers };
+    
+    newCategoryFixture.groups.forEach(group => {
+        newGroupSettings[group.id] = { court: '1', startTime: '09:00', duration: defaultDurationStr };
+        newTimersState[group.id] = { isActive: false, timeRemaining: defaultDuration * 60, initialDuration: defaultDuration * 60 };
+    });
+    setGroupScheduleSettings(newGroupSettings);
     setGroupTimers(newTimersState);
-    setActiveTimers([]); // Reset active timers on new fixture
+    
     if (torneo) {
       sessionStorage.setItem(`fixture_${torneo.tournamentName}`, JSON.stringify(newFixture));
     }
-    toast({ title: "Enfrentamientos Generados", description: "Se ha creado la planilla de grupos y partidos (sin horarios ni canchas asignadas)." });
+    toast({ title: "Enfrentamientos Generados", description: `Se han creado los grupos para ${categoryName}.` });
   };
 
 
@@ -2048,10 +2021,10 @@ const handleConfirmPlayoffSchedule = () => {
               id="play-third-place"
               checked={playThirdPlace}
               onCheckedChange={(checked) => handleGlobalTournamentSettingChange('thirdPlace', checked)}
-              disabled={!!fixture}
+              disabled={fixture && Object.keys(fixture).length > 0}
             />
           </div>
-          {!!fixture && 
+          {fixture && Object.keys(fixture).length > 0 && 
             <div className="col-span-full sm:col-span-1">
               <p className="text-xs text-muted-foreground">
                 No se puede cambiar una vez generado el fixture.
@@ -2060,14 +2033,10 @@ const handleConfirmPlayoffSchedule = () => {
           }
 
         </CardContent>
-        <CardFooter className="flex justify-between items-center pt-4">
+        <CardFooter className="flex justify-end items-center pt-4">
             <Button variant="destructive" onClick={() => setIsDeleteDialogOpen(true)} >
                 <Trash2 className="mr-2 h-5 w-5" />
                 Borrar Torneo
-            </Button>
-            <Button onClick={generateFixture} disabled={!!fixture}>
-                <ListChecks className="mr-2 h-5 w-5" />
-                {fixture ? "Enfrentamientos Ya Generados" : "Generar Enfrentamientos"}
             </Button>
         </CardFooter>
       </Card>
@@ -2217,7 +2186,7 @@ const handleConfirmPlayoffSchedule = () => {
         </Card>
       )}
 
-      <h2 className="text-2xl md:text-3xl font-bold text-primary mb-6 self-start w-full max-w-4xl mx-auto">Categorías y Duplas Originales</h2>
+      <h2 className="text-2xl md:text-3xl font-bold text-primary mb-6 self-start w-full max-w-4xl mx-auto">Categorías y Grupos</h2>
       {torneo.categoriesWithDuplas.length > 0 ? (
         <Accordion type="single" collapsible className="w-full max-w-4xl mb-8" defaultValue={torneo.categoriesWithDuplas.find(c => c.numTotalJugadores > 0)?.id}>
           {torneo.categoriesWithDuplas.map((categoria) => (
@@ -2273,6 +2242,46 @@ const handleConfirmPlayoffSchedule = () => {
                     </ul>
                   </div>
                 )}
+                {(!fixture || !fixture[categoria.id]) && categoria.duplas.length >= 2 && (
+                    <div className="mt-6 pt-4 border-t">
+                        <h4 className="font-semibold text-primary mb-2">Generar Grupos</h4>
+                        <div className="flex flex-col sm:flex-row items-end gap-4">
+                            <div className="flex-grow w-full sm:w-auto">
+                                <Label htmlFor={`groups-for-${categoria.id}`}>Número de Grupos a Crear</Label>
+                                <Select 
+                                    value={groupConfiguration[categoria.id]?.numGroups || ''}
+                                    onValueChange={(value) => handleGroupConfigChange(categoria.id, value)}
+                                >
+                                    <SelectTrigger id={`groups-for-${categoria.id}`}>
+                                        <SelectValue placeholder="Seleccionar número de grupos" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {Array.from({ length: Math.floor(categoria.duplas.length / 2) }, (_, i) => i + 1).map(num => (
+                                            <SelectItem key={num} value={num.toString()}>{num} {num > 1 ? 'grupos' : 'grupo'}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <Button onClick={() => handleGenerateCategoryFixture(categoria.id)} className="w-full sm:w-auto">
+                              <ListChecks className="mr-2 h-4 w-4" />Generar Grupos
+                            </Button>
+                        </div>
+                        {groupConfiguration[categoria.id]?.numGroups && (
+                          <div className="text-sm text-muted-foreground mt-2 space-y-1">
+                            <p>
+                                Se crearán {groupConfiguration[categoria.id].numGroups} grupos.
+                                Las duplas se distribuirán de la forma más equitativa posible.
+                            </p>
+                            {parseInt(groupConfiguration[categoria.id].numGroups, 10) === 2 && (
+                              <p className="font-semibold text-primary/80">
+                                  ¡Perfecto! Al crear 2 grupos se generará una fase de Playoffs (Semifinales y Final).
+                              </p>
+                            )}
+                          </div>
+                        )}
+                    </div>
+                )}
+
               </AccordionContent>
             </AccordionItem>
           ))}
