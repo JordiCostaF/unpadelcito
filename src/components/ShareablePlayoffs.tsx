@@ -46,19 +46,24 @@ export const ShareablePlayoffs = React.forwardRef<HTMLDivElement, ShareablePlayo
     }
 
     const containerStyle: React.CSSProperties = {
-      width: '1200px',
+      width: '1400px',
       fontFamily: "'PT Sans', sans-serif",
       backgroundColor: '#0A0A0A',
       color: '#FFFFFF',
       padding: '2rem',
     };
 
+    const quarterfinals = categoryFixture.playoffMatches.filter(m => m.stage === 'cuartos');
     const semifinals = categoryFixture.playoffMatches.filter(m => m.stage === 'semifinal');
     const final = categoryFixture.playoffMatches.find(m => m.stage === 'final');
     const thirdPlace = categoryFixture.playoffMatches.find(m => m.stage === 'tercer_puesto');
     
     const sf1 = semifinals.find(m => m.id.includes('SF1'));
     const sf2 = semifinals.find(m => m.id.includes('SF2'));
+    const qf1 = quarterfinals.find(m => m.id.includes('QF1'));
+    const qf2 = quarterfinals.find(m => m.id.includes('QF2'));
+    const qf3 = quarterfinals.find(m => m.id.includes('QF3'));
+    const qf4 = quarterfinals.find(m => m.id.includes('QF4'));
     const champion = final?.status === 'completed' ? (final.winnerId === final.dupla1.id ? final.dupla1.nombre : final.dupla2.nombre) : null;
 
     return (
@@ -72,8 +77,22 @@ export const ShareablePlayoffs = React.forwardRef<HTMLDivElement, ShareablePlayo
 
             {/* Main Bracket */}
             <div className="flex items-center justify-center w-full space-x-8">
+                {quarterfinals.length > 0 && (
+                    <>
+                        <div className="flex flex-col justify-around h-[38rem] space-y-8">
+                            <MatchBox match={qf1} title="Cuartos de Final" />
+                            <MatchBox match={qf2} title="Cuartos de Final" />
+                            <MatchBox match={qf3} title="Cuartos de Final" />
+                            <MatchBox match={qf4} title="Cuartos de Final" />
+                        </div>
+                        <div className="h-full flex items-center">
+                            <ChevronRight className="h-12 w-12 text-primary/50" />
+                        </div>
+                    </>
+                )}
+
               {/* Semifinals Column */}
-              <div className="flex flex-col justify-around h-[20rem] space-y-16">
+              <div className="flex flex-col justify-around h-[28rem] space-y-16">
                 <MatchBox match={sf1} title="Semifinal 1" />
                 <MatchBox match={sf2} title="Semifinal 2" />
               </div>

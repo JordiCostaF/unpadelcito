@@ -119,7 +119,7 @@ export interface Group {
 }
 
 export interface PlayoffMatch extends Match {
-  stage: 'semifinal' | 'final' | 'tercer_puesto';
+  stage: 'cuartos' | 'semifinal' | 'final' | 'tercer_puesto';
   description: string; 
 }
 
@@ -1204,22 +1204,50 @@ function ActiveTournamentPageComponent() {
     }
 
     let playoffMatchesForCategory: PlayoffMatch[] | undefined = undefined;
-    if (numGroups === 2 && groups.every(g => g.duplas.length >= 2)) {
-        const placeholderDuplaW_G1 = { id: 'placeholder-G1W', nombre: 'Ganador Grupo A', jugadores: [] as any };
-        const placeholderDuplaRU_G1 = { id: 'placeholder-G1RU', nombre: 'Segundo Grupo A', jugadores: [] as any };
-        const placeholderDuplaW_G2 = { id: 'placeholder-G2W', nombre: 'Ganador Grupo B', jugadores: [] as any };
-        const placeholderDuplaRU_G2 = { id: 'placeholder-G2RU', nombre: 'Segundo Grupo B', jugadores: [] as any };
-        const placeholderDuplaW_SF1 = { id: 'placeholder-SF1W', nombre: 'Ganador SF1', jugadores: [] as any };
-        const placeholderDuplaL_SF1 = { id: 'placeholder-SF1L', nombre: 'Perdedor SF1', jugadores: [] as any };
-        const placeholderDuplaW_SF2 = { id: 'placeholder-SF2W', nombre: 'Ganador SF2', jugadores: [] as any };
-        const placeholderDuplaL_SF2 = { id: 'placeholder-SF2L', nombre: 'Perdedor SF2', jugadores: [] as any };
 
+    // Define todos los placeholders de una vez para claridad
+    const placeholderDuplaW_G1 = { id: 'placeholder-G1W', nombre: '1º Grupo A', jugadores: [] as any };
+    const placeholderDuplaRU_G1 = { id: 'placeholder-G1RU', nombre: '2º Grupo A', jugadores: [] as any };
+    const placeholderDuplaW_G2 = { id: 'placeholder-G2W', nombre: '1º Grupo B', jugadores: [] as any };
+    const placeholderDuplaRU_G2 = { id: 'placeholder-G2RU', nombre: '2º Grupo B', jugadores: [] as any };
+    const placeholderDuplaW_G3 = { id: 'placeholder-G3W', nombre: '1º Grupo C', jugadores: [] as any };
+    const placeholderDuplaRU_G3 = { id: 'placeholder-G3RU', nombre: '2º Grupo C', jugadores: [] as any };
+    const placeholderDuplaW_G4 = { id: 'placeholder-G4W', nombre: '1º Grupo D', jugadores: [] as any };
+    const placeholderDuplaRU_G4 = { id: 'placeholder-G4RU', nombre: '2º Grupo D', jugadores: [] as any };
+
+    const placeholderDuplaW_QF1 = { id: 'placeholder-QF1W', nombre: 'Ganador QF1', jugadores: [] as any };
+    const placeholderDuplaW_QF2 = { id: 'placeholder-QF2W', nombre: 'Ganador QF2', jugadores: [] as any };
+    const placeholderDuplaW_QF3 = { id: 'placeholder-QF3W', nombre: 'Ganador QF3', jugadores: [] as any };
+    const placeholderDuplaW_QF4 = { id: 'placeholder-QF4W', nombre: 'Ganador QF4', jugadores: [] as any };
+
+    const placeholderDuplaW_SF1 = { id: 'placeholder-SF1W', nombre: 'Ganador SF1', jugadores: [] as any };
+    const placeholderDuplaL_SF1 = { id: 'placeholder-SF1L', nombre: 'Perdedor SF1', jugadores: [] as any };
+    const placeholderDuplaW_SF2 = { id: 'placeholder-SF2W', nombre: 'Ganador SF2', jugadores: [] as any };
+    const placeholderDuplaL_SF2 = { id: 'placeholder-SF2L', nombre: 'Perdedor SF2', jugadores: [] as any };
+
+
+    if (numGroups === 2 && groups.every(g => g.duplas.length >= 2)) { // Semifinales
         playoffMatchesForCategory = [
-            { id: `${category.id}-SF1`, dupla1: placeholderDuplaW_G1, dupla2: placeholderDuplaRU_G2, status: 'pending', stage: 'semifinal', description: 'Ganador Grupo A vs Segundo Grupo B', court: undefined, time: undefined },
-            { id: `${category.id}-SF2`, dupla1: placeholderDuplaW_G2, dupla2: placeholderDuplaRU_G1, status: 'pending', stage: 'semifinal', description: 'Ganador Grupo B vs Segundo Grupo A', court: undefined, time: undefined },
+            { id: `${category.id}-SF1`, dupla1: placeholderDuplaW_G1, dupla2: placeholderDuplaRU_G2, status: 'pending', stage: 'semifinal', description: '1º Grupo A vs 2º Grupo B', court: undefined, time: undefined },
+            { id: `${category.id}-SF2`, dupla1: placeholderDuplaW_G2, dupla2: placeholderDuplaRU_G1, status: 'pending', stage: 'semifinal', description: '1º Grupo B vs 2º Grupo A', court: undefined, time: undefined },
             { id: `${category.id}-F`, dupla1: placeholderDuplaW_SF1, dupla2: placeholderDuplaW_SF2, status: 'pending', stage: 'final', description: 'Final', court: undefined, time: undefined },
         ];
-
+        if (playThirdPlace) {
+            playoffMatchesForCategory.push({ id: `${category.id}-TP`, dupla1: placeholderDuplaL_SF1, dupla2: placeholderDuplaL_SF2, status: 'pending', stage: 'tercer_puesto', description: 'Tercer Puesto', court: undefined, time: undefined });
+        }
+    } else if (numGroups === 4 && groups.every(g => g.duplas.length >= 2)) { // Cuartos de final
+        playoffMatchesForCategory = [
+            // Cuartos
+            { id: `${category.id}-QF1`, dupla1: placeholderDuplaW_G1, dupla2: placeholderDuplaRU_G4, status: 'pending', stage: 'cuartos', description: '1º Grupo A vs 2º Grupo D', court: undefined, time: undefined },
+            { id: `${category.id}-QF2`, dupla1: placeholderDuplaW_G3, dupla2: placeholderDuplaRU_G2, status: 'pending', stage: 'cuartos', description: '1º Grupo C vs 2º Grupo B', court: undefined, time: undefined },
+            { id: `${category.id}-QF3`, dupla1: placeholderDuplaW_G2, dupla2: placeholderDuplaRU_G3, status: 'pending', stage: 'cuartos', description: '1º Grupo B vs 2º Grupo C', court: undefined, time: undefined },
+            { id: `${category.id}-QF4`, dupla1: placeholderDuplaW_G4, dupla2: placeholderDuplaRU_G1, status: 'pending', stage: 'cuartos', description: '1º Grupo D vs 2º Grupo A', court: undefined, time: undefined },
+            // Semis
+            { id: `${category.id}-SF1`, dupla1: placeholderDuplaW_QF1, dupla2: placeholderDuplaW_QF2, status: 'pending', stage: 'semifinal', description: 'Ganador QF1 vs Ganador QF2', court: undefined, time: undefined },
+            { id: `${category.id}-SF2`, dupla1: placeholderDuplaW_QF3, dupla2: placeholderDuplaW_QF4, status: 'pending', stage: 'semifinal', description: 'Ganador QF3 vs Ganador QF4', court: undefined, time: undefined },
+            // Final
+            { id: `${category.id}-F`, dupla1: placeholderDuplaW_SF1, dupla2: placeholderDuplaW_SF2, status: 'pending', stage: 'final', description: 'Final', court: undefined, time: undefined },
+        ];
         if (playThirdPlace) {
             playoffMatchesForCategory.push({ id: `${category.id}-TP`, dupla1: placeholderDuplaL_SF1, dupla2: placeholderDuplaL_SF2, status: 'pending', stage: 'tercer_puesto', description: 'Tercer Puesto', court: undefined, time: undefined });
         }
@@ -1515,7 +1543,32 @@ function ActiveTournamentPageComponent() {
             matchToUpdate.winnerId = score1 > score2 ? matchToUpdate.dupla1.id : matchToUpdate.dupla2.id;
             matchFound = true;
             
-            if (matchToUpdate.stage === 'semifinal') {
+             if (matchToUpdate.stage === 'cuartos') {
+                const winnerDupla = matchToUpdate.winnerId === matchToUpdate.dupla1.id ? matchToUpdate.dupla1 : matchToUpdate.dupla2;
+                const sf1 = categoryFixture.playoffMatches.find(m => m.id.endsWith('SF1'));
+                const sf2 = categoryFixture.playoffMatches.find(m => m.id.endsWith('SF2'));
+                const final = categoryFixture.playoffMatches.find(m => m.stage === 'final');
+                const third = categoryFixture.playoffMatches.find(m => m.stage === 'tercer_puesto');
+                
+                let matchesToReset = [final, third];
+                
+                if (matchToUpdate.id.endsWith('QF1')) {
+                    if (sf1) { sf1.dupla1 = winnerDupla; matchesToReset.push(sf1); }
+                } else if (matchToUpdate.id.endsWith('QF2')) {
+                    if (sf1) { sf1.dupla2 = winnerDupla; matchesToReset.push(sf1); }
+                } else if (matchToUpdate.id.endsWith('QF3')) {
+                    if (sf2) { sf2.dupla1 = winnerDupla; matchesToReset.push(sf2); }
+                } else if (matchToUpdate.id.endsWith('QF4')) {
+                    if (sf2) { sf2.dupla2 = winnerDupla; matchesToReset.push(sf2); }
+                }
+                
+                matchesToReset.filter(Boolean).forEach(m => {
+                    if (m && !m.dupla1.id.startsWith('placeholder-') && !m.dupla2.id.startsWith('placeholder-')) {
+                         m.score1 = undefined; m.score2 = undefined; m.status = 'pending'; m.winnerId = undefined;
+                    }
+                });
+
+            } else if (matchToUpdate.stage === 'semifinal') {
                 const finalMatch = categoryFixture.playoffMatches.find(m => m.stage === 'final');
                 const thirdPlaceMatch = categoryFixture.playoffMatches.find(m => m.stage === 'tercer_puesto');
 
@@ -1604,92 +1657,92 @@ const handleConfirmPlayoffSchedule = () => {
         toast({ title: "Error", description: "Datos de fixture incompletos para playoffs.", variant: "destructive" });
         return;
     }
-    if (!catFixture.groups) catFixture.groups = []; 
+    if (!catFixture.groups) catFixture.groups = [];
     
-    const groupA = catFixture.groups.find(g => g.name.toLowerCase().includes("grupo a")) || catFixture.groups[0];
-    const groupB = catFixture.groups.length > 1 ? (catFixture.groups.find(g => g.name.toLowerCase().includes("grupo b")) || catFixture.groups[1]) : groupA;
+    // Identificar equipos clasificados
+    const qualifiedTeams: { [groupName: string]: Dupla[] } = {};
+    const allDuplasMap = new Map<string, Dupla>();
+    
+    catFixture.groups.forEach(group => {
+        group.duplas.forEach(dupla => allDuplasMap.set(dupla.id, dupla));
 
-    let sortedStandingsA: Standing[] = [];
-    let sortedStandingsB: Standing[] = [];
-
-    if (groupA && groupA.standings.length > 0) {
-        sortedStandingsA = [...groupA.standings].sort(compareStandingsNumerically);
-        if (sortedStandingsA.length >= 2 && compareStandingsNumerically(sortedStandingsA[0], sortedStandingsA[1]) === 0) {
-            const headToHeadMatch = groupA.matches.find(m =>
+        const sortedStandings = [...group.standings].sort(compareStandingsNumerically);
+        
+        // Desempate cabeza a cabeza para los dos primeros
+        if (sortedStandings.length >= 2 && compareStandingsNumerically(sortedStandings[0], sortedStandings[1]) === 0) {
+            const headToHeadMatch = group.matches.find(m =>
                 m.status === 'completed' &&
-                ((m.dupla1.id === sortedStandingsA[0].duplaId && m.dupla2.id === sortedStandingsA[1].duplaId) ||
-                 (m.dupla1.id === sortedStandingsA[1].duplaId && m.dupla2.id === sortedStandingsA[0].duplaId))
+                ((m.dupla1.id === sortedStandings[0].duplaId && m.dupla2.id === sortedStandings[1].duplaId) ||
+                 (m.dupla1.id === sortedStandings[1].duplaId && m.dupla2.id === sortedStandings[0].duplaId))
             );
-            if (headToHeadMatch?.winnerId === sortedStandingsA[1].duplaId) {
-                [sortedStandingsA[0], sortedStandingsA[1]] = [sortedStandingsA[1], sortedStandingsA[0]];
+            if (headToHeadMatch?.winnerId === sortedStandings[1].duplaId) {
+                [sortedStandings[0], sortedStandings[1]] = [sortedStandings[1], sortedStandings[0]];
             }
         }
-    }
+        
+        qualifiedTeams[group.name] = sortedStandings
+            .slice(0, 2)
+            .map(s => allDuplasMap.get(s.duplaId)!)
+            .filter(Boolean);
+    });
+    
+    const groups = catFixture.groups.map(g => g.name);
+    const getTeam = (groupLetter: string, position: number) => {
+        const groupName = `Grupo ${groupLetter}`;
+        return qualifiedTeams[groupName]?.[position - 1];
+    };
+    
+    const hasQuarterFinals = catFixture.playoffMatches.some(m => m.stage === 'cuartos');
 
-    if (groupB && groupB.standings.length > 0) {
-        sortedStandingsB = [...groupB.standings].sort(compareStandingsNumerically);
-        if (groupB.id === groupA?.id) sortedStandingsB = sortedStandingsA; 
-        else if (sortedStandingsB.length >= 2 && compareStandingsNumerically(sortedStandingsB[0], sortedStandingsB[1]) === 0) {
-             const headToHeadMatch = groupB.matches.find(m =>
-                m.status === 'completed' &&
-                ((m.dupla1.id === sortedStandingsB[0].duplaId && m.dupla2.id === sortedStandingsB[1].duplaId) ||
-                 (m.dupla1.id === sortedStandingsB[1].duplaId && m.dupla2.id === sortedStandingsB[0].duplaId))
-            );
-            if (headToHeadMatch?.winnerId === sortedStandingsB[1].duplaId) {
-                [sortedStandingsB[0], sortedStandingsB[1]] = [sortedStandingsB[1], sortedStandingsB[0]];
-            }
+    if (hasQuarterFinals) {
+        const qf1 = catFixture.playoffMatches.find(m => m.id.endsWith('-QF1'));
+        const qf2 = catFixture.playoffMatches.find(m => m.id.endsWith('-QF2'));
+        const qf3 = catFixture.playoffMatches.find(m => m.id.endsWith('-QF3'));
+        const qf4 = catFixture.playoffMatches.find(m => m.id.endsWith('-QF4'));
+
+        const teamW_GA = getTeam('A', 1); const teamRU_GA = getTeam('A', 2);
+        const teamW_GB = getTeam('B', 1); const teamRU_GB = getTeam('B', 2);
+        const teamW_GC = getTeam('C', 1); const teamRU_GC = getTeam('C', 2);
+        const teamW_GD = getTeam('D', 1); const teamRU_GD = getTeam('D', 2);
+
+        if (!teamW_GA || !teamRU_GA || !teamW_GB || !teamRU_GB || !teamW_GC || !teamRU_GC || !teamW_GD || !teamRU_GD) {
+            toast({ title: "Error de Clasificación", description: "No se pudieron determinar todos los clasificados para cuartos de final. Revisa los resultados.", variant: "destructive" });
+            return;
         }
-    } else if (groupA) { 
-        sortedStandingsB = sortedStandingsA;
+
+        if (qf1) { qf1.dupla1 = teamW_GA; qf1.dupla2 = teamRU_GD; }
+        if (qf2) { qf2.dupla1 = teamW_GC; qf2.dupla2 = teamRU_GB; }
+        if (qf3) { qf3.dupla1 = teamW_GB; qf3.dupla2 = teamRU_GC; }
+        if (qf4) { qf4.dupla1 = teamW_GD; qf4.dupla2 = teamRU_GA; }
+
+    } else { // Semifinals logic
+        const sf1 = catFixture.playoffMatches.find(m => m.id.endsWith('-SF1'));
+        const sf2 = catFixture.playoffMatches.find(m => m.id.endsWith('-SF2'));
+        const teamW_GA = getTeam('A', 1); const teamRU_GA = getTeam('A', 2);
+        const teamW_GB = getTeam('B', 1); const teamRU_GB = getTeam('B', 2);
+
+        if (catFixture.groups.length > 0 && (!teamW_GA || !teamRU_GA || !teamW_GB || !teamRU_GB)) {
+            toast({ title: "Error de Clasificación", description: "No se pudieron determinar los clasificados para semifinales.", variant: "destructive" });
+            return;
+        }
+        if (sf1) { if (teamW_GA && teamRU_GB) { sf1.dupla1 = teamW_GA; sf1.dupla2 = teamRU_GB; } }
+        if (sf2) { if (teamW_GB && teamRU_GA) { sf2.dupla1 = teamW_GB; sf2.dupla2 = teamRU_GA; } }
     }
 
-
-    const winnerA = groupA?.duplas.find(d => d.id === sortedStandingsA[0]?.duplaId);
-    const runnerUpA = groupA?.duplas.find(d => d.id === sortedStandingsA[1]?.duplaId);
-    const winnerB = groupB?.duplas.find(d => d.id === sortedStandingsB[0]?.duplaId);
-    const runnerUpB = groupB?.duplas.find(d => d.id === sortedStandingsB[1]?.duplaId);
-
-    if (catFixture.groups.length > 0 && (!winnerA || !runnerUpA || !winnerB || !runnerUpB)) {
-        toast({ title: "Error de Clasificación", description: "No se pudieron determinar todos los clasificados. Asegúrate que los grupos tengan resultados y al menos 2 duplas.", variant: "destructive"});
-        return;
-    }
-    
-    const sf1Match = catFixture.playoffMatches.find(m => m.id.endsWith('-SF1'));
-    const sf2Match = catFixture.playoffMatches.find(m => m.id.endsWith('-SF2'));
-    const finalMatch = catFixture.playoffMatches.find(m => m.stage === 'final');
-    const thirdPlaceMatch = catFixture.playoffMatches.find(m => m.stage === 'tercer_puesto');
-
-    if (sf1Match) { 
-        if(winnerA && runnerUpB) { sf1Match.dupla1 = winnerA; sf1Match.dupla2 = runnerUpB; } 
-        else if (!winnerA && sf1Match.dupla1.id.startsWith('placeholder-')) { /* keep placeholder */ }
-        else if (!runnerUpB && sf1Match.dupla2.id.startsWith('placeholder-')) { /* keep placeholder */ }
-        else if (catFixture.groups.length > 0) {toast({title:"Error", description:"SF1: Clasificados A o B no encontrados."}); return; }
-    } else { toast({title:"Error", description:"SF1 no encontrada"}); return; }
-
-    if (sf2Match) { 
-        if(winnerB && runnerUpA) { sf2Match.dupla1 = winnerB; sf2Match.dupla2 = runnerUpA; } 
-        else if (!winnerB && sf2Match.dupla1.id.startsWith('placeholder-')) { /* keep placeholder */ }
-        else if (!runnerUpA && sf2Match.dupla2.id.startsWith('placeholder-')) { /* keep placeholder */ }
-        else if (catFixture.groups.length > 0) {toast({title:"Error", description:"SF2: Clasificados B o A no encontrados."}); return; }
-    } else { toast({title:"Error", description:"SF2 no encontrada"}); return; }
-    
-    const matchesToReset = [finalMatch];
-    if (thirdPlaceMatch) {
-      matchesToReset.push(thirdPlaceMatch);
-    }
-    matchesToReset.forEach(m => {
-        if (m && (!m.dupla1.id.startsWith('placeholder-') || !m.dupla2.id.startsWith('placeholder-'))) {
-             m.score1 = undefined; m.score2 = undefined; m.status = 'pending'; m.winnerId = undefined;
+    // Reset subsequent matches
+    catFixture.playoffMatches.forEach(match => {
+        if (!match.dupla1.id.startsWith('placeholder-') && !match.dupla2.id.startsWith('placeholder-')) {
+             if (match.stage !== 'cuartos' || !hasQuarterFinals) { // Reset SF, F, TP
+                 match.score1 = undefined; match.score2 = undefined; match.status = 'pending'; match.winnerId = undefined;
+             }
         }
     });
-
 
     let lastRelevantGroupMatchEndTime = new Date(0);
     if(catFixture.groups.length > 0) {
         catFixture.groups.forEach(group => {
             if (!group.groupStartTime || !group.groupMatchDuration) return;
             const groupBaseDate = torneo.date ? new Date(torneo.date) : new Date(); 
-            
             group.matches.forEach(match => {
                  if (match.time && match.status === 'completed') { 
                     const matchStartTime = parse(match.time, "HH:mm", groupBaseDate);
@@ -1704,7 +1757,6 @@ const handleConfirmPlayoffSchedule = () => {
         });
     }
 
-
     if (lastRelevantGroupMatchEndTime.getTime() === new Date(0).getTime()) { 
         const [generalHours, generalMinutes] = (torneo.time || "09:00").split(':').map(Number);
         lastRelevantGroupMatchEndTime = setMinutes(setHours(new Date(torneo.date), generalHours), generalMinutes);
@@ -1713,58 +1765,52 @@ const handleConfirmPlayoffSchedule = () => {
         }
     }
 
-
     const breakMinutes = parseInt(playoffSchedulingSettings.breakDuration, 10);
     const playoffMatchDuration = parseInt(playoffSchedulingSettings.defaultMatchDuration, 10);
-
-    let semiFinalsStartTime = addMinutes(lastRelevantGroupMatchEndTime, breakMinutes);
     
-    const courtSf1 = groupA?.groupAssignedCourt || (numCourtsGlobal && numCourtsGlobal >= 1 ? "1" : "Cancha Principal");
-    const courtSf2 = (groupB && groupB.groupAssignedCourt && groupB.groupAssignedCourt !== courtSf1) 
-                     ? groupB.groupAssignedCourt 
-                     : (numCourtsGlobal && numCourtsGlobal >= 2 ? (courtSf1 === "1" ? "2" : "1") : (courtSf1 === "Cancha Principal" ? "Cancha Secundaria" : "Cancha Principal"));
+    const courts = Array.from({length: numCourtsGlobal || 1}, (_, i) => (i + 1).toString());
 
+    let nextAvailableTime: Date[] = courts.map(() => addMinutes(lastRelevantGroupMatchEndTime, breakMinutes));
 
-    if (sf1Match) {
-      sf1Match.time = format(semiFinalsStartTime, "HH:mm");
-      sf1Match.court = courtSf1;
+    const scheduleRound = (matchesToSchedule: PlayoffMatch[], roundName: string) => {
+        let roundEndTimes: Date[] = [];
+        matchesToSchedule.forEach((match, index) => {
+            const courtIndex = index % courts.length;
+            const court = courts[courtIndex];
+            const startTime = nextAvailableTime[courtIndex];
+
+            match.time = format(startTime, "HH:mm");
+            match.court = court;
+
+            const endTime = addMinutes(startTime, playoffMatchDuration);
+            nextAvailableTime[courtIndex] = addMinutes(endTime, breakMinutes);
+            roundEndTimes.push(endTime);
+        });
+        const maxEndTime = new Date(Math.max(...roundEndTimes.map(d => d.getTime())));
+        nextAvailableTime = courts.map(() => addMinutes(maxEndTime, breakMinutes));
     }
-    const sf1EndTime = addMinutes(semiFinalsStartTime, playoffMatchDuration);
 
-    if (sf2Match) {
-      if (courtSf1 === courtSf2) { 
-          sf2Match.time = format(sf1EndTime, "HH:mm");
-      } else { 
-          sf2Match.time = format(semiFinalsStartTime, "HH:mm");
+    const qfMatches = catFixture.playoffMatches.filter(m => m.stage === 'cuartos');
+    const sfMatches = catFixture.playoffMatches.filter(m => m.stage === 'semifinal');
+    const fMatch = catFixture.playoffMatches.find(m => m.stage === 'final');
+    const tpMatch = catFixture.playoffMatches.find(m => m.stage === 'tercer_puesto');
+    
+    if (qfMatches.length > 0) scheduleRound(qfMatches, 'Cuartos');
+    if (sfMatches.length > 0) scheduleRound(sfMatches, 'Semifinales');
+    if (fMatch) scheduleRound([fMatch], 'Final');
+
+    // Schedule 3rd place match on a free court, potentially in parallel with the final
+    if (tpMatch) {
+      if (courts.length > 1 && fMatch) {
+          const finalCourtIndex = courts.indexOf(fMatch.court as string);
+          const tpCourtIndex = (finalCourtIndex + 1) % courts.length;
+          tpMatch.court = courts[tpCourtIndex];
+          tpMatch.time = fMatch.time; // Same time as final
+      } else if (fMatch) { // Only one court, schedule after final
+          const finalEndTime = addMinutes(parse(fMatch.time!, 'HH:mm', new Date(torneo.date)), playoffMatchDuration);
+          tpMatch.time = format(addMinutes(finalEndTime, breakMinutes), 'HH:mm');
+          tpMatch.court = fMatch.court;
       }
-      sf2Match.court = courtSf2;
-    }
-    const sf2ParsedStartTime = sf2Match ? parse(sf2Match.time!, "HH:mm", new Date(torneo.date)) : new Date(0);
-    const sf2EndTime = sf2Match ? addMinutes(sf2ParsedStartTime, playoffMatchDuration) : new Date(0);
-
-    const latestSemiFinalEndTime = sf1EndTime > sf2EndTime ? sf1EndTime : sf2EndTime;
-
-    let finalRoundStartTime = addMinutes(latestSemiFinalEndTime, breakMinutes);
-
-    const courtFinal = groupA?.groupAssignedCourt || (numCourtsGlobal && numCourtsGlobal >= 1 ? "1" : "Cancha Principal");
-    const courtThirdPlace = (groupB && groupB.groupAssignedCourt && groupB.groupAssignedCourt !== courtFinal)
-                          ? groupB.groupAssignedCourt
-                          : (numCourtsGlobal && numCourtsGlobal >= 2 ? (courtFinal === "1" ? "2" : "1") : (courtFinal === "Cancha Principal" ? "Cancha Secundaria": "Cancha Principal"));
-
-
-    if (finalMatch) {
-        finalMatch.time = format(finalRoundStartTime, "HH:mm");
-        finalMatch.court = courtFinal;
-    }
-    const finalEndTime = addMinutes(finalRoundStartTime, playoffMatchDuration);
-
-    if (thirdPlaceMatch) {
-        if (courtFinal === courtThirdPlace) { 
-            thirdPlaceMatch.time = format(finalEndTime, "HH:mm");
-        } else { 
-            thirdPlaceMatch.time = format(finalRoundStartTime, "HH:mm");
-        }
-        thirdPlaceMatch.court = courtThirdPlace;
     }
     
     setFixture(newFixture);
@@ -2186,7 +2232,7 @@ const handleConfirmPlayoffSchedule = () => {
         </Card>
       )}
 
-      <h2 className="text-2xl md:text-3xl font-bold text-primary mb-6 self-start w-full max-w-4xl mx-auto">Categorías y Grupos</h2>
+      <h2 className="text-2xl md:text-3xl font-bold text-primary mb-6 self-start w-full max-w-4xl mx-auto">Categorías y Duplas Originales</h2>
       {torneo.categoriesWithDuplas.length > 0 ? (
         <Accordion type="single" collapsible className="w-full max-w-4xl mb-8" defaultValue={torneo.categoriesWithDuplas.find(c => c.numTotalJugadores > 0)?.id}>
           {torneo.categoriesWithDuplas.map((categoria) => (
@@ -2256,8 +2302,10 @@ const handleConfirmPlayoffSchedule = () => {
                                         <SelectValue placeholder="Seleccionar número de grupos" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {Array.from({ length: Math.floor(categoria.duplas.length / 3) }, (_, i) => i + 1).map(num => (
-                                            <SelectItem key={num} value={num.toString()}>{num} {num > 1 ? 'grupos' : 'grupo'}</SelectItem>
+                                        {Array.from({ length: Math.floor(categoria.duplas.length / 3) }, (_, i) => i + 1)
+                                            .filter(num => num <= 4) // Limit to 4 groups for now
+                                            .map(num => (
+                                                <SelectItem key={num} value={num.toString()}>{num} {num > 1 ? 'grupos' : 'grupo'}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
@@ -2277,6 +2325,11 @@ const handleConfirmPlayoffSchedule = () => {
                                   ¡Perfecto! Al crear 2 grupos se generará una fase de Playoffs (Semifinales y Final).
                               </p>
                             )}
+                            {parseInt(groupConfiguration[categoria.id].numGroups, 10) === 4 && (
+                              <p className="font-semibold text-primary/80">
+                                  ¡Genial! Al crear 4 grupos se generará una fase de Playoffs completa (Cuartos, Semis y Final).
+                              </p>
+                            )}
                           </div>
                         )}
                     </div>
@@ -2291,7 +2344,7 @@ const handleConfirmPlayoffSchedule = () => {
       )}
 
       {fixture && Object.keys(fixture).length > 0 && (
-        <Card className="w-full max-w-4xl mb-8 shadow-lg">
+        <Card className="w-full max-w-7xl mb-8 shadow-lg">
             <CardHeader>
                 <CardTitle className="text-2xl flex items-center"><TrophyIcon className="mr-2 h-6 w-6 text-primary" /> Planilla del Torneo</CardTitle>
                 <CardDescription>Define la configuración para cada grupo y programa sus partidos. Luego programa los playoffs.</CardDescription>
@@ -2307,11 +2360,16 @@ const handleConfirmPlayoffSchedule = () => {
                         ))}
                     </TabsList>
                     {Object.values(fixture).map((catFixture) => {
+                      const quarterfinals = catFixture.playoffMatches?.filter(m => m.stage === 'cuartos') || [];
                       const semifinals = catFixture.playoffMatches?.filter(m => m.stage === 'semifinal') || [];
                       const final = catFixture.playoffMatches?.find(m => m.stage === 'final');
                       const thirdPlace = catFixture.playoffMatches?.find(m => m.stage === 'tercer_puesto');
                       const sf1 = semifinals.find(m => m.id.includes('SF1'));
                       const sf2 = semifinals.find(m => m.id.includes('SF2'));
+                      const qf1 = quarterfinals.find(m => m.id.includes('QF1'));
+                      const qf2 = quarterfinals.find(m => m.id.includes('QF2'));
+                      const qf3 = quarterfinals.find(m => m.id.includes('QF3'));
+                      const qf4 = quarterfinals.find(m => m.id.includes('QF4'));
                       const champion = final?.status === 'completed' ? (final.winnerId === final.dupla1.id ? final.dupla1.nombre : final.dupla2.nombre) : null;
 
                       return (
@@ -2478,7 +2536,7 @@ const handleConfirmPlayoffSchedule = () => {
                                 </TabsContent>
                                 <TabsContent value="playoffs">
                                     {catFixture.playoffMatches && catFixture.playoffMatches.length > 0 ? (
-                                        <div className="mb-6">
+                                        <div className="mb-6 overflow-x-auto p-4">
                                             <div className="flex justify-between items-center mb-4">
                                                 <h4 className="text-lg font-semibold text-primary">Fase de Playoffs</h4>
                                                 <div className="flex gap-2">
@@ -2507,52 +2565,37 @@ const handleConfirmPlayoffSchedule = () => {
                                                 }
                                             </p>
 
-                                            <div className="flex flex-col items-center justify-center space-y-12">
+                                            <div className="flex flex-col items-center justify-center space-y-12 lg:space-y-0">
                                                 {/* Main Bracket */}
                                                 <div className="flex flex-col lg:flex-row items-center justify-center w-full lg:space-x-8 space-y-8 lg:space-y-0">
-                                                  {/* Semifinals Column */}
-                                                  <div className="flex flex-col md:flex-row lg:flex-col items-center justify-between lg:h-[22rem] space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
-                                                    <PlayoffMatchBox
-                                                      match={sf1 ? { ...sf1, categoryId: catFixture.categoryId } : undefined}
-                                                      title="Semifinal 1"
-                                                      onEditClick={() => {
-                                                        if(sf1) {
-                                                          setCurrentEditingMatch({ ...sf1, categoryId: catFixture.categoryId });
-                                                          setIsResultModalOpen(true);
-                                                        }
-                                                      }}
-                                                    />
-                                                    <PlayoffMatchBox
-                                                      match={sf2 ? { ...sf2, categoryId: catFixture.categoryId } : undefined}
-                                                      title="Semifinal 2"
-                                                      onEditClick={() => {
-                                                        if(sf2) {
-                                                          setCurrentEditingMatch({ ...sf2, categoryId: catFixture.categoryId });
-                                                          setIsResultModalOpen(true);
-                                                        }
-                                                      }}
-                                                    />
-                                                  </div>
+                                                  
+                                                  {/* QUARTERFINALS COLUMN */}
+                                                  {quarterfinals.length > 0 && (
+                                                    <>
+                                                      <div className="flex flex-col md:flex-row lg:flex-col items-center justify-around lg:space-y-12 space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
+                                                          <PlayoffMatchBox match={qf1 ? { ...qf1, categoryId: catFixture.categoryId } : undefined} title="Cuartos de Final" onEditClick={() => { if(qf1) { setCurrentEditingMatch({ ...qf1, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}} />
+                                                          <PlayoffMatchBox match={qf2 ? { ...qf2, categoryId: catFixture.categoryId } : undefined} title="Cuartos de Final" onEditClick={() => { if(qf2) { setCurrentEditingMatch({ ...qf2, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}} />
+                                                          <PlayoffMatchBox match={qf3 ? { ...qf3, categoryId: catFixture.categoryId } : undefined} title="Cuartos de Final" onEditClick={() => { if(qf3) { setCurrentEditingMatch({ ...qf3, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}} />
+                                                          <PlayoffMatchBox match={qf4 ? { ...qf4, categoryId: catFixture.categoryId } : undefined} title="Cuartos de Final" onEditClick={() => { if(qf4) { setCurrentEditingMatch({ ...qf4, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}} />
+                                                      </div>
+                                                      <div className="h-full hidden lg:flex items-center"><ChevronRight className="h-12 w-12 text-primary/50" /></div>
+                                                    </>
+                                                  )}
 
-                                                  <div className="h-full hidden lg:flex items-center">
-                                                     <ChevronRight className="h-12 w-12 text-primary/50" />
+                                                  {/* SEMIFINALS COLUMN */}
+                                                  <div className="flex flex-col md:flex-row lg:flex-col items-center justify-around lg:space-y-48 space-y-8 md:space-y-0 md:space-x-8 lg:space-x-0">
+                                                    <PlayoffMatchBox match={sf1 ? { ...sf1, categoryId: catFixture.categoryId } : undefined} title="Semifinal 1" onEditClick={() => { if(sf1) { setCurrentEditingMatch({ ...sf1, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
+                                                    <PlayoffMatchBox match={sf2 ? { ...sf2, categoryId: catFixture.categoryId } : undefined} title="Semifinal 2" onEditClick={() => { if(sf2) { setCurrentEditingMatch({ ...sf2, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
                                                   </div>
                                                   
-                                                  <PlayoffMatchBox
-                                                    match={final ? { ...final, categoryId: catFixture.categoryId } : undefined}
-                                                    title="Final"
-                                                    winner={!!champion}
-                                                    onEditClick={() => {
-                                                      if(final) {
-                                                        setCurrentEditingMatch({ ...final, categoryId: catFixture.categoryId });
-                                                        setIsResultModalOpen(true);
-                                                      }
-                                                    }}
-                                                  />
+                                                  <div className="h-full hidden lg:flex items-center"><ChevronRight className="h-12 w-12 text-primary/50" /></div>
+                                                  
+                                                  {/* FINAL COLUMN */}
+                                                  <PlayoffMatchBox match={final ? { ...final, categoryId: catFixture.categoryId } : undefined} title="Final" winner={!!champion} onEditClick={() => { if(final) { setCurrentEditingMatch({ ...final, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
                                                 </div>
                                                 
                                                 {champion && (
-                                                  <div className="text-center py-4 border-t-2 border-b-2 border-dashed border-primary/50 w-full max-w-md">
+                                                  <div className="text-center py-4 border-t-2 border-b-2 border-dashed border-primary/50 w-full max-w-md mt-12">
                                                     <h3 className="text-2xl font-bold uppercase tracking-widest text-primary">CAMPEÓN</h3>
                                                     <p className="text-4xl font-bold flex items-center justify-center mt-2">
                                                       <TrophyIcon className="h-10 w-10 mr-4 text-primary" />
@@ -2565,22 +2608,13 @@ const handleConfirmPlayoffSchedule = () => {
                                                 {/* Third Place Match */}
                                                 {thirdPlace && (
                                                   <div className="pt-8 mt-8 border-t-2 border-dashed border-primary/50 w-full flex justify-center">
-                                                    <PlayoffMatchBox
-                                                      match={thirdPlace ? { ...thirdPlace, categoryId: catFixture.categoryId } : undefined}
-                                                      title="Tercer Puesto"
-                                                      onEditClick={() => {
-                                                        if(thirdPlace) {
-                                                          setCurrentEditingMatch({ ...thirdPlace, categoryId: catFixture.categoryId });
-                                                          setIsResultModalOpen(true);
-                                                        }
-                                                      }}
-                                                    />
+                                                    <PlayoffMatchBox match={thirdPlace ? { ...thirdPlace, categoryId: catFixture.categoryId } : undefined} title="Tercer Puesto" onEditClick={() => { if(thirdPlace) { setCurrentEditingMatch({ ...thirdPlace, categoryId: catFixture.categoryId }); setIsResultModalOpen(true); }}}/>
                                                   </div>
                                                 )}
                                             </div>
                                         </div>
                                     ) : (
-                                        <p className="text-muted-foreground text-center py-3">La fase de playoffs no aplica o no ha sido generada para esta categoría (requiere 2 grupos con al menos 2 duplas c/u y resultados para la estructura actual).</p>
+                                        <p className="text-muted-foreground text-center py-3">La fase de playoffs no aplica o no ha sido generada para esta categoría.</p>
                                     )}
                                 </TabsContent>
                             </Tabs>
@@ -2664,7 +2698,7 @@ const handleConfirmPlayoffSchedule = () => {
                   <DialogTitle>Programar Playoffs para {categoryForPlayoffScheduling?.type} - {categoryForPlayoffScheduling?.level}</DialogTitle>
                   <DialogDescription>
                       Define la duración de los partidos de playoff y el descanso entre rondas.
-                      Las canchas se intentarán asignar basadas en las canchas de los grupos principales (A y B si existen).
+                      Las canchas se intentarán asignar basadas en las canchas de los grupos principales.
                       Asegúrate que todos los partidos de grupo de esta categoría estén completados.
                   </DialogDescription>
               </DialogHeader>
